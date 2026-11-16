@@ -46,3 +46,5 @@ candidates:
 silver:
   evidence_low_throughput: [EXP, IDA, IPI, IMP, IGI, IEP]
   evidence_high_throughput: [HTP, HDA, HMP, HGI, HEP]
+extract:
+  main_run: gemma4-31b_20261116-1655   # MVP full run (prompt v2); used by validate / rdf / verdicts
