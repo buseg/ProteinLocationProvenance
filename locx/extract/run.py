@@ -188,6 +188,7 @@ def main():
           f"{len(recs_all) - len(todo)} done, {len(todo)} to do | concurrency {a.concurrency}")
     (run_dir / "run.json").write_text(json.dumps(meta, indent=2))
 
+    input_sha = sha256_file(INTERIM / "candidates.jsonl")  # hash what this session reads, at its start
     t0 = time.time()
     if todo:
         asyncio.run(run_all(todo, run_dir / "raw.jsonl", a.concurrency))
@@ -200,7 +201,7 @@ def main():
     meta["sessions"].append({"started": datetime.fromtimestamp(t0).isoformat(timespec="seconds"),
                              "ended": datetime.now().isoformat(timespec="seconds"), "requests": len(todo),
                              "input_abstracts": len(recs_all),
-                             "input_sha256": sha256_file(INTERIM / "candidates.jsonl")})
+                             "input_sha256": input_sha})
     meta["ended"] = datetime.now().isoformat(timespec="seconds")
     meta["counts"] = {"abstracts": stats["abstracts"], **stats["status"],
                       "claims": sum(v["claims"] for v in stats["per_tier"].values())}

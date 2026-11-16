@@ -1,0 +1,6 @@
+# M7 sanity: is there an assertion without a valid mention? (expected: false)
+PREFIX locx: <http://example.org/locx/>
+ASK {
+  GRAPH <urn:locx:graph:assertions> { ?a a locx:Assertion . }
+  FILTER NOT EXISTS { GRAPH <%RUN_GRAPH%> { ?m locx:asserts ?a ; locx:valid true . } }
+}

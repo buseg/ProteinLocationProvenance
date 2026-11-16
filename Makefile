@@ -3,7 +3,7 @@ SHELL := /bin/bash
 MM    ?= $(HOME)/.local/bin/micromamba
 GPU   := $(shell sed -n 's/^ *gpu: *\([0-9]*\).*/\1/p' config.yaml)
 
-.PHONY: env kg corpus candidates fuseki-build fuseki-up fuseki-down fuseki-status fuseki-smoke fuseki-backup vllm-env serve serve-stop serve-smoke extract-dev extract validate
+.PHONY: env kg corpus candidates fuseki-build fuseki-up fuseki-down fuseki-status fuseki-smoke fuseki-backup vllm-env serve serve-stop serve-smoke extract-dev extract validate rdf load
 
 ## M0 — pipeline env (micromamba, conda-forge only)
 env:
@@ -41,3 +41,7 @@ extract:     ; $(PY) -m locx.extract.run --tiers silver,discovery $(ARGS)
 
 ## M6 — validation (Python part; V5/V6 are SHACL shapes in M7)
 validate: ; $(PY) -m locx.extract.validate $(ARGS)
+
+## M7 — claims to RDF + SHACL (quality flags, gate), then load into Fuseki
+rdf:  ; $(PY) -m locx.kg.claims_rdf build $(ARGS)
+load: ; $(PY) -m locx.kg.claims_rdf load $(ARGS)
