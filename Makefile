@@ -3,7 +3,7 @@ SHELL := /bin/bash
 MM    ?= $(HOME)/.local/bin/micromamba
 GPU   := $(shell sed -n 's/^ *gpu: *\([0-9]*\).*/\1/p' config.yaml)
 
-.PHONY: env kg fuseki-build fuseki-up fuseki-down fuseki-status fuseki-smoke fuseki-backup vllm-env serve serve-stop serve-smoke
+.PHONY: env kg corpus candidates fuseki-build fuseki-up fuseki-down fuseki-status fuseki-smoke fuseki-backup vllm-env serve serve-stop serve-smoke
 
 ## M0 — pipeline env (micromamba, conda-forge only)
 env:
@@ -26,5 +26,11 @@ serve-stop: ; ./scripts/serve_vllm.sh stop
 serve-smoke: ; ./scripts/serve_vllm.sh smoke
 
 ## M2 — reference graphs (GO CC, GOA human, UniProt human) -> Fuseki
-PY := $(MM) run -n locx python
+PY := $(MM) run -n locx python -u
 kg: ; $(PY) -m locx.kg.build $(ARGS)
+
+## M3 — corpus tiers + Europe PMC metadata + PubTator text/genes
+corpus: ; $(PY) -m locx.corpus
+
+## M4 — sentences, protein + location candidates, prefilter
+candidates: ; $(PY) -m locx.extract.candidates $(ARGS)

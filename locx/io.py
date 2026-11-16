@@ -39,3 +39,23 @@ def write_jsonl(path: Path, rows) -> int:
             f.write(json.dumps(row, ensure_ascii=False) + "\n")
             n += 1
     return n
+
+
+def get_json(url: str, params: dict | None = None, retries: int = 4, timeout: int = 120) -> dict:
+    """GET with retries and exponential backoff on network errors, 429 and 5xx."""
+    for attempt in range(retries + 1):
+        try:
+            r = requests.get(url, params=params, timeout=timeout)
+            if 400 <= r.status_code < 500 and r.status_code != 429:
+                r.raise_for_status()  # client errors do not go away on retry; let the caller decide
+            if r.status_code == 429 or r.status_code >= 500:
+                raise requests.ConnectionError(f"HTTP {r.status_code}")
+            return r.json()
+        except requests.HTTPError:
+            raise
+        except (requests.RequestException, ValueError) as e:
+            if attempt == retries:
+                raise
+            wait = 5 * 2 ** attempt
+            print(f"[retry] {url.split('/')[2]}: {e}; waiting {wait} s")
+            time.sleep(wait)

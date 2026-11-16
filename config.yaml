@@ -24,8 +24,18 @@ corpus:
   dev_years: [2015, 2026]
   discovery_years: [2023, 2026]
   discovery_cap: 3000      # MVP; later up to 20000
+  discovery_stratify: year # cap split evenly over discovery_years (DECISIONS 2026-11-16)
   silver_sample: 1000      # MVP; later up to 5000
   seed: 13
+  dev_seeds:               # symbol: names used in the Europe PMC query (SPEC M3.1)
+    TP53: ["p53", "TP53"]
+    TFEB: ["TFEB"]
+    YAP1: ["YAP", "YAP1"]
+    CTNNB1: ["beta-catenin", "β-catenin"]
+    FOXO3: ["FOXO3", "FOXO3a"]
+    NFE2L2: ["NRF2", "NFE2L2"]
+    PKM: ["PKM2"]
+    STAT3: ["STAT3"]
 candidates:
   max_proteins: 15
   max_locations: 15
