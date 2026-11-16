@@ -1,0 +1,6 @@
+# M2 sanity: negated (NOT) GOA CC annotations exist
+PREFIX locx: <http://example.org/locx/>
+SELECT (COUNT(?a) AS ?n)
+WHERE {
+  GRAPH <urn:locx:graph:goa-human> { ?a locx:negated true . }
+}

@@ -1,0 +1,6 @@
+# M2 sanity: mitochondrion (GO:0005739) reaches cytoplasm (GO:0005737) via is_a / part_of
+PREFIX obo:  <http://purl.obolibrary.org/obo/>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+ASK {
+  GRAPH <urn:locx:graph:go-cc> { obo:GO_0005739 (rdfs:subClassOf|obo:BFO_0000050)* obo:GO_0005737 . }
+}

@@ -1,0 +1,7 @@
+# M2 sanity: the label of GO:0005634 is "nucleus"
+PREFIX obo:  <http://purl.obolibrary.org/obo/>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+SELECT ?label
+WHERE {
+  GRAPH <urn:locx:graph:go-cc> { obo:GO_0005634 rdfs:label ?label . }
+}

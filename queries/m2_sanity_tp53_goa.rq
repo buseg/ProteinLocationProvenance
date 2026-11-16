@@ -1,0 +1,7 @@
+# M2 sanity: TP53 (P04637) has GOA CC annotations
+PREFIX locx:    <http://example.org/locx/>
+PREFIX uniprot: <http://purl.uniprot.org/uniprot/>
+SELECT (COUNT(?a) AS ?n)
+WHERE {
+  GRAPH <urn:locx:graph:goa-human> { ?a locx:protein uniprot:P04637 . }
+}
