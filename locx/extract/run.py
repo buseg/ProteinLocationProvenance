@@ -20,7 +20,7 @@ from datetime import datetime
 import requests
 from openai import AsyncOpenAI
 
-from locx.config import CFG, DATA, INTERIM, REPORTS, secret
+from locx.config import CFG, DATA, INTERIM, REPORTS, ROOT, secret
 from locx.extract import prompt, schema
 from locx.io import read_jsonl
 
@@ -150,6 +150,9 @@ def main():
     ap.add_argument("--limit", type=int, help="first N abstracts only (smoke test)")
     ap.add_argument("--sample", type=int, help="random N abstracts of the tiers (seed from config; prompt tuning)")
     ap.add_argument("--concurrency", type=int, default=L["concurrency"])
+    ap.add_argument("--candidates", default="data/interim/candidates.jsonl", help="input file (new run)")
+    ap.add_argument("--seed-from", help="new run only: copy answers of this run (same model, prompt, schema, "
+                                        "sampling) for PMIDs in the input instead of asking the model again")
     a = ap.parse_args()
 
     if a.run_id:
@@ -157,6 +160,7 @@ def main():
         meta = json.loads((run_dir / "run.json").read_text())
         tiers = meta["tiers"]
         a.sample = a.sample or meta.get("sample")
+        a.candidates = meta["input"]
         if meta["prompt_sha256"] != prompt.prompt_sha256() or meta["schema_version"] != schema.SCHEMA_VERSION:
             raise SystemExit("prompt or schema changed since this run started; start a new run instead")
     else:
@@ -173,22 +177,37 @@ def main():
                 "prompt_version": prompt.PROMPT_VERSION, "prompt_sha256": prompt.prompt_sha256(),
                 "schema_version": schema.SCHEMA_VERSION, "temperature": L["temperature"],
                 "max_tokens": L["max_tokens"], "concurrency": a.concurrency, "retries": RETRIES,
-                "input": "data/interim/candidates.jsonl",
-                "input_sha256": sha256_file(INTERIM / "candidates.jsonl"), "sample": a.sample,
+                "input": a.candidates,
+                "input_sha256": sha256_file(ROOT / a.candidates), "sample": a.sample,
                 "started": datetime.now().isoformat(timespec="seconds"), "sessions": []}
 
-    recs_all = [r for r in read_jsonl(INTERIM / "candidates.jsonl") if set(tiers) & set(r["tiers"])]
+    recs_all = [r for r in read_jsonl(ROOT / a.candidates) if set(tiers) & set(r["tiers"])]
     if a.sample:
         recs_all = sorted(random.Random(CFG["corpus"]["seed"]).sample(recs_all, a.sample), key=lambda r: int(r["pmid"]))
     if a.limit:
         recs_all = recs_all[:a.limit]
+    if a.seed_from and not a.run_id:
+        seed_dir = RUNS / a.seed_from
+        sm = json.loads((seed_dir / "run.json").read_text())
+        same = ("model", "prompt_sha256", "schema_version", "temperature", "max_tokens")
+        if any(sm[k] != meta[k] for k in same):
+            raise SystemExit(f"[extract] cannot seed from {a.seed_from}: differs in {[k for k in same if sm[k] != meta[k]]}")
+        wanted, last = {r["pmid"] for r in recs_all}, {}
+        for r in read_jsonl(seed_dir / "raw.jsonl"):
+            last[r["pmid"]] = r
+        seeded = [dict(r, seeded_from=a.seed_from) for p, r in last.items() if p in wanted and r["status"] != "error"]
+        with open(run_dir / "raw.jsonl", "w") as f:
+            for r in seeded:
+                f.write(json.dumps(r, ensure_ascii=False) + "\n")
+        meta["seeded_from"] = {"run_id": a.seed_from, "records": len(seeded)}
+        print(f"[extract] seeded {len(seeded)} answers from run {a.seed_from}")
     done = done_pmids(run_dir / "raw.jsonl")
     todo = [r for r in recs_all if r["pmid"] not in done]
     print(f"[extract] run {meta['run_id']} | tiers {tiers} | {len(recs_all)} abstracts, "
           f"{len(recs_all) - len(todo)} done, {len(todo)} to do | concurrency {a.concurrency}")
     (run_dir / "run.json").write_text(json.dumps(meta, indent=2))
 
-    input_sha = sha256_file(INTERIM / "candidates.jsonl")  # hash what this session reads, at its start
+    input_sha = sha256_file(ROOT / a.candidates)  # hash what this session reads, at its start
     t0 = time.time()
     if todo:
         asyncio.run(run_all(todo, run_dir / "raw.jsonl", a.concurrency))

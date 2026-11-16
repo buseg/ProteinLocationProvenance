@@ -1,0 +1,6 @@
+# M8: number of assertions per verdict
+PREFIX locx: <http://example.org/locx/>
+SELECT ?verdict (COUNT(?a) AS ?assertions)
+WHERE { GRAPH <urn:locx:graph:verdicts> { ?a locx:verdict ?verdict . } }
+GROUP BY ?verdict
+ORDER BY DESC(?assertions)

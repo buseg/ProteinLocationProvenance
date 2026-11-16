@@ -71,3 +71,21 @@ def load(graph: str, path: Path, replace: bool = False) -> int:
     MANIFEST.write_text(json.dumps(manifest, indent=1))
     print(f"[load] {graph}: {n} triples from {path.name} ({time.time() - t:.0f} s)")
     return n
+
+
+def append(graph: str, path: Path) -> None:
+    """POST (add) a Turtle file to a named graph without touching what is already there."""
+    with open(path, "rb") as f:
+        r = requests.post(f"{BASE}/data", params={"graph": graph}, data=f, auth=_auth(),
+                          headers={"Content-Type": "text/turtle"}, timeout=3600)
+    r.raise_for_status()
+
+
+def run_update_file(path: Path, subst: dict | None = None) -> float:
+    """Run a .ru file (operations separated by ';' run in order). Returns seconds."""
+    text = path.read_text()
+    for k, v in (subst or {}).items():
+        text = text.replace(k, v)
+    t = time.time()
+    update(text)
+    return time.time() - t

@@ -1,0 +1,16 @@
+# M8: per-assertion support in SPARQL (cross-check of locx/analysis/verdicts.py; the demo uses it).
+# Mentions and papers come from the run graph, author groups from the verdicts graph,
+# years from the papers graph. %RUN_GRAPH% = the extraction run's named graph.
+PREFIX locx: <http://example.org/locx/>
+PREFIX prov: <http://www.w3.org/ns/prov#>
+SELECT ?a ?verdict
+       (COUNT(DISTINCT ?m) AS ?n_mentions)
+       (COUNT(DISTINCT ?paper) AS ?n_papers)
+       (COUNT(DISTINCT ?group) AS ?n_groups)
+       (MIN(?year) AS ?year_first) (MAX(?year) AS ?year_last)
+WHERE {
+  GRAPH <%RUN_GRAPH%>              { ?m locx:asserts ?a ; locx:valid true ; prov:wasDerivedFrom ?paper . }
+  GRAPH <urn:locx:graph:verdicts>  { ?a locx:verdict ?verdict . ?m locx:authorGroup ?group . }
+  OPTIONAL { GRAPH <urn:locx:graph:papers> { ?paper locx:year ?year . } }
+}
+GROUP BY ?a ?verdict
