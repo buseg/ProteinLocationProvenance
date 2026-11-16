@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# vLLM without Docker: start | stop | smoke. Env "vllm" (scripts/setup_vllm_env.sh), one GPU.
+# vLLM without Docker: start | stop | smoke. Env "vllm" (scripts/setup_vllm_env.sh), one GPU per server.
+# Second server: GPU=2 PORT=8001 scripts/serve_vllm.sh start (DECISIONS 2026-11-16).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 MM="${MAMBA_EXE:-$HOME/.local/bin/micromamba}"
@@ -7,9 +8,10 @@ cfg() { sed -n "s/^ *$1: *\([^ #]*\).*/\1/p" config.yaml | head -1; }
 GPU="${GPU:-$(cfg gpu)}"
 MODEL="$(cfg model)"
 NAME="$(cfg served_name)"
-PORT="$(cfg endpoint | sed -n 's#.*:\([0-9]*\)/v1#\1#p')"
-PIDFILE=data/vllm.pid
-LOG=logs/vllm.log
+PORT="${PORT:-$(cfg endpoint | sed -n 's#.*:\([0-9]*\)/v1#\1#p')}"
+SUFFIX=""; [[ "$PORT" != 8000 ]] && SUFFIX="_$PORT"   # second server (e.g. GPU 2, port 8001)
+PIDFILE=data/vllm$SUFFIX.pid
+LOG=logs/vllm$SUFFIX.log
 set -a; . ./.env; set +a
 running() { [[ -f $PIDFILE ]] && kill -0 "$(cat $PIDFILE)" 2>/dev/null; }
 

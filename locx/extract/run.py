@@ -46,13 +46,13 @@ def done_pmids(raw_path) -> set[str]:
     return {p for p, s in last.items() if s != "error"}
 
 
-async def extract_one(client, rec, sem, out, lock, progress):
+async def extract_one(client, rec, sem, out, lock, progress, server=None):
     async with sem:
         body = dict(model=L["served_name"], messages=prompt.messages(rec), temperature=L["temperature"],
                     max_tokens=L["max_tokens"],
                     response_format={"type": "json_schema",
                                      "json_schema": {"name": "claims", "schema": schema.build(rec)}})
-        row = {"pmid": rec["pmid"], "tiers": rec["tiers"]}
+        row = {"pmid": rec["pmid"], "tiers": rec["tiers"], "server": server}
         for attempt in range(RETRIES + 1):
             t = time.time()
             try:
@@ -80,13 +80,32 @@ async def extract_one(client, rec, sem, out, lock, progress):
                 print(f"[extract] {progress[0]}/{progress[1]} done ({time.time() - progress[2]:.0f} s)")
 
 
+def endpoints() -> list[str]:
+    """All vLLM servers to use (config llm.endpoints, else llm.endpoint); each gets `concurrency` slots."""
+    return L.get("endpoints") or [L["endpoint"]]
+
+
 async def run_all(recs, raw_path, concurrency):
-    client = AsyncOpenAI(base_url=L["endpoint"], api_key=secret("VLLM_API_KEY"), timeout=900, max_retries=0)
-    sem, lock = asyncio.Semaphore(concurrency), asyncio.Lock()
-    progress = [0, len(recs), time.time()]
+    """Shared queue, `concurrency` workers per server: a faster server simply takes more abstracts."""
+    queue = asyncio.Queue()
+    for r in recs:
+        queue.put_nowait(r)
+    lock, progress = asyncio.Lock(), [0, len(recs), time.time()]
+    clients = [(AsyncOpenAI(base_url=ep, api_key=secret("VLLM_API_KEY"), timeout=900, max_retries=0), ep)
+               for ep in endpoints()]
+
+    async def worker(client, ep, sem):
+        while True:
+            try:
+                rec = queue.get_nowait()
+            except asyncio.QueueEmpty:
+                return
+            await extract_one(client, rec, sem, out, lock, progress, server=ep)
     with open(raw_path, "a") as out:
-        await asyncio.gather(*(extract_one(client, r, sem, out, lock, progress) for r in recs))
-    await client.close()
+        await asyncio.gather(*(worker(cl, ep, sem) for cl, ep in clients
+                               for sem in [asyncio.Semaphore(concurrency)] for _ in range(concurrency)))
+    for cl, _ in clients:
+        await cl.close()
 
 
 def summarize(run_dir, recs_all, tiers, wall_s, new_pmids):
@@ -218,6 +237,7 @@ def main():
     if proj:
         stats["projection"] = proj
     meta["sessions"].append({"started": datetime.fromtimestamp(t0).isoformat(timespec="seconds"),
+                             "endpoints": endpoints(), "concurrency_per_endpoint": a.concurrency,
                              "ended": datetime.now().isoformat(timespec="seconds"), "requests": len(todo),
                              "input_abstracts": len(recs_all),
                              "input_sha256": input_sha})

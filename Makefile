@@ -3,7 +3,7 @@ SHELL := /bin/bash
 MM    ?= $(HOME)/.local/bin/micromamba
 GPU   := $(shell sed -n 's/^ *gpu: *\([0-9]*\).*/\1/p' config.yaml)
 
-.PHONY: env kg corpus candidates fuseki-build fuseki-up fuseki-down fuseki-status fuseki-smoke fuseki-backup vllm-env serve serve-stop serve-smoke extract-dev extract validate rdf load verdicts
+.PHONY: env kg corpus candidates fuseki-build fuseki-up fuseki-down fuseki-status fuseki-smoke fuseki-backup vllm-env serve serve-stop serve-smoke serve2 serve2-stop serve2-smoke extract-dev extract validate rdf load verdicts silver-eval precision-sample precision
 
 ## M0 — pipeline env (micromamba, conda-forge only)
 env:
@@ -24,6 +24,10 @@ vllm-env: ; ./scripts/setup_vllm_env.sh
 serve:    ; GPU=$(GPU) ./scripts/serve_vllm.sh start
 serve-stop: ; ./scripts/serve_vllm.sh stop
 serve-smoke: ; ./scripts/serve_vllm.sh smoke
+GPU2  := $(shell sed -n 's/^ *second_gpu: *\([0-9]*\).*/\1/p' config.yaml)
+serve2:       ; GPU=$(GPU2) PORT=8001 ./scripts/serve_vllm.sh start
+serve2-stop:  ; PORT=8001 ./scripts/serve_vllm.sh stop
+serve2-smoke: ; PORT=8001 ./scripts/serve_vllm.sh smoke
 
 ## M2 — reference graphs (GO CC, GOA human, UniProt human) -> Fuseki
 PY := $(MM) run -n locx python -u
@@ -48,3 +52,8 @@ load: ; $(PY) -m locx.kg.claims_rdf load $(ARGS)
 
 ## M8 — verdicts against GOA + aggregation (author groups, counts)
 verdicts: ; $(PY) -m locx.analysis.verdicts $(ARGS)
+
+## M9 — evaluation (silver recall, precision sheet)
+silver-eval: ; $(PY) -m locx.analysis.silver_eval $(ARGS)
+precision-sample: ; $(PY) -m locx.analysis.precision sample $(ARGS)
+precision:        ; $(PY) -m locx.analysis.precision score

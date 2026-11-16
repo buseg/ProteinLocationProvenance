@@ -16,6 +16,8 @@ llm:
   served_name: gemma4-31b
   gpu: 1                                     # the one GPU this project uses (DECISIONS 2026-11-16)
   endpoint: http://localhost:8000/v1
+  second_gpu: 2                              # second server (port 8001), allowed by Buse 2026-11-16; never GPU 0
+  endpoints: [http://localhost:8000/v1, http://localhost:8001/v1]   # extraction spreads requests over both
   concurrency: 48
   temperature: 0.0
   max_tokens: 1500
