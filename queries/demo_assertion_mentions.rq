@@ -1,0 +1,26 @@
+# Demo / Assertion detail: every valid mention of the assertion with its paper and author group
+PREFIX locx:    <http://example.org/locx/>
+PREFIX prov:    <http://www.w3.org/ns/prov#>
+PREFIX dcterms: <http://purl.org/dc/terms/>
+PREFIX rdfs:    <http://www.w3.org/2000/01/rdf-schema#>
+PREFIX foaf:    <http://xmlns.com/foaf/0.1/>
+SELECT ?m ?paper ?sentence ?sentenceId ?proteinMention ?locationMention ?certainty ?sourceType ?method
+       ?organism ?cellType ?condition ?group ?title ?journal ?year ?citations ?doi ?flag
+WHERE {
+  GRAPH <%RUN_GRAPH%> {
+    ?m locx:asserts <%ASSERTION%> ; locx:valid true ; prov:wasDerivedFrom ?paper ;
+       locx:sentenceText ?sentence ; locx:sentenceId ?sentenceId ; locx:certainty ?certainty ;
+       locx:sourceType ?sourceType ; locx:method ?method ; locx:organism ?organism .
+    OPTIONAL { ?m locx:proteinMention ?proteinMention }
+    OPTIONAL { ?m locx:locationMention ?locationMention }
+    OPTIONAL { ?m locx:cellType ?cellType }
+    OPTIONAL { ?m locx:condition ?condition }
+    OPTIONAL { ?m locx:flag ?flag }
+  }
+  OPTIONAL { GRAPH <urn:locx:graph:verdicts> { ?m locx:authorGroup ?group } }
+  GRAPH <urn:locx:graph:papers> {
+    ?paper dcterms:title ?title .
+    OPTIONAL { ?paper locx:journal ?journal } OPTIONAL { ?paper locx:year ?year }
+    OPTIONAL { ?paper locx:citedByCount ?citations } OPTIONAL { ?paper locx:doi ?doi }
+  }
+}

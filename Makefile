@@ -3,7 +3,7 @@ SHELL := /bin/bash
 MM    ?= $(HOME)/.local/bin/micromamba
 GPU   := $(shell sed -n 's/^ *gpu: *\([0-9]*\).*/\1/p' config.yaml)
 
-.PHONY: env kg corpus candidates fuseki-build fuseki-up fuseki-down fuseki-status fuseki-smoke fuseki-backup vllm-env serve serve-stop serve-smoke serve2 serve2-stop serve2-smoke extract-dev extract validate rdf load verdicts silver-eval precision-sample precision report
+.PHONY: env kg corpus candidates fuseki-build fuseki-up fuseki-down fuseki-status fuseki-smoke fuseki-backup vllm-env serve serve-stop serve-smoke serve2 serve2-stop serve2-smoke extract-dev extract validate rdf load verdicts silver-eval precision-sample precision report demo demo-stop demo-check
 
 ## M0 — pipeline env (micromamba, conda-forge only)
 env:
@@ -60,3 +60,8 @@ precision:        ; $(PY) -m locx.analysis.precision score
 
 ## M10 — report numbers + figures
 report: ; $(PY) -m locx.analysis.report $(ARGS)
+
+## M11 — Streamlit demo on 127.0.0.1:8501 (laptop: ssh -L 8502:localhost:8501 ...)
+demo:       ; ./scripts/demo.sh start
+demo-stop:  ; ./scripts/demo.sh stop
+demo-check: ; $(PY) app/check_demo.py

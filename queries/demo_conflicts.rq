@@ -1,0 +1,21 @@
+# Demo / Conflicts: conflicting assertions with support counts, context flag and the opposing GOA rows
+PREFIX locx:    <http://example.org/locx/>
+PREFIX prov:    <http://www.w3.org/ns/prov#>
+PREFIX dcterms: <http://purl.org/dc/terms/>
+PREFIX rdfs:    <http://www.w3.org/2000/01/rdf-schema#>
+PREFIX foaf:    <http://xmlns.com/foaf/0.1/>
+SELECT ?a ?symbol ?label ?polarity ?nGroups ?nPapers ?context
+       (GROUP_CONCAT(DISTINCT CONCAT(IF(?neg, "NOT ", ""), ?q, " ", ?glabel, " [", ?ev, "]"); separator="; ") AS ?goa)
+WHERE {
+  GRAPH <urn:locx:graph:verdicts> {
+    ?a locx:verdict locx:Conflicting ; locx:nGroups ?nGroups ; locx:nPapers ?nPapers ; locx:goaMatch ?g .
+    OPTIONAL { ?a locx:contextDependent ?context }
+  }
+  GRAPH <urn:locx:graph:assertions>    { ?a locx:protein ?protein ; locx:location ?term ; locx:polarity ?polarity . }
+  GRAPH <urn:locx:graph:uniprot-human> { ?protein locx:geneSymbol ?symbol . }
+  GRAPH <urn:locx:graph:go-cc>         { ?term rdfs:label ?label . }
+  GRAPH <urn:locx:graph:goa-human>     { ?g locx:negated ?neg ; locx:qualifier ?q ; locx:evidenceCode ?ev ; locx:location ?gt . }
+  GRAPH <urn:locx:graph:go-cc>         { ?gt rdfs:label ?glabel . }
+}
+GROUP BY ?a ?symbol ?label ?polarity ?nGroups ?nPapers ?context
+ORDER BY DESC(?nGroups) DESC(?nPapers) ?symbol

@@ -1,0 +1,22 @@
+# Demo / Assertion detail: the assertion, its verdict and support counts (%ASSERTION% = assertion IRI)
+PREFIX locx:    <http://example.org/locx/>
+PREFIX prov:    <http://www.w3.org/ns/prov#>
+PREFIX dcterms: <http://purl.org/dc/terms/>
+PREFIX rdfs:    <http://www.w3.org/2000/01/rdf-schema#>
+PREFIX foaf:    <http://xmlns.com/foaf/0.1/>
+SELECT ?symbol ?protein ?label ?term ?polarity ?verdict ?nPapers ?nGroups ?nFinding ?nBackground ?nHedged
+       ?yearFirst ?yearLast ?nOpposing ?sameAsGOA ?context ?weak ?experimental
+WHERE {
+  GRAPH <urn:locx:graph:assertions>    { <%ASSERTION%> locx:protein ?protein ; locx:location ?term ; locx:polarity ?polarity . }
+  GRAPH <urn:locx:graph:uniprot-human> { ?protein locx:geneSymbol ?symbol . }
+  GRAPH <urn:locx:graph:go-cc>         { ?term rdfs:label ?label . }
+  GRAPH <urn:locx:graph:verdicts> {
+    <%ASSERTION%> locx:verdict ?verdict ; locx:nPapers ?nPapers ; locx:nGroups ?nGroups ;
+       locx:nPapersFinding ?nFinding ; locx:nPapersBackground ?nBackground ; locx:nPapersHedged ?nHedged ;
+       locx:nOpposingPapers ?nOpposing ; locx:curatedFromSamePaper ?sameAsGOA .
+    OPTIONAL { <%ASSERTION%> locx:yearFirst ?yearFirst ; locx:yearLast ?yearLast }
+    OPTIONAL { <%ASSERTION%> locx:contextDependent ?context }
+    OPTIONAL { <%ASSERTION%> locx:weakGoaMatch ?weak }
+    OPTIONAL { <%ASSERTION%> locx:goaExperimental ?experimental }
+  }
+}

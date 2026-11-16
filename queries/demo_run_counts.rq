@@ -1,0 +1,8 @@
+# Demo / Overview: mentions in the run (all, valid) and papers they come from
+PREFIX locx:    <http://example.org/locx/>
+PREFIX prov:    <http://www.w3.org/ns/prov#>
+PREFIX dcterms: <http://purl.org/dc/terms/>
+PREFIX rdfs:    <http://www.w3.org/2000/01/rdf-schema#>
+PREFIX foaf:    <http://xmlns.com/foaf/0.1/>
+SELECT (COUNT(?m) AS ?mentions) (SUM(IF(?v, 1, 0)) AS ?valid) (COUNT(DISTINCT ?paper) AS ?papers)
+WHERE { GRAPH <%RUN_GRAPH%> { ?m a locx:Mention ; locx:valid ?v ; prov:wasDerivedFrom ?paper . } }

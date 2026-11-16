@@ -1,0 +1,10 @@
+# Demo / Errors: invalid mentions per flag (a mention can have several flags)
+PREFIX locx:    <http://example.org/locx/>
+PREFIX prov:    <http://www.w3.org/ns/prov#>
+PREFIX dcterms: <http://purl.org/dc/terms/>
+PREFIX rdfs:    <http://www.w3.org/2000/01/rdf-schema#>
+PREFIX foaf:    <http://xmlns.com/foaf/0.1/>
+SELECT ?flag (COUNT(DISTINCT ?m) AS ?mentions)
+WHERE { GRAPH <%RUN_GRAPH%> { ?m locx:valid false ; locx:flag ?flag . } }
+GROUP BY ?flag
+ORDER BY DESC(?mentions)

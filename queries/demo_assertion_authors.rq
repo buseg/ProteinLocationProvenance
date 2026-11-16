@@ -1,0 +1,13 @@
+# Demo / Assertion detail: authors of the supporting papers (ORCID IRIs where known)
+PREFIX locx:    <http://example.org/locx/>
+PREFIX prov:    <http://www.w3.org/ns/prov#>
+PREFIX dcterms: <http://purl.org/dc/terms/>
+PREFIX rdfs:    <http://www.w3.org/2000/01/rdf-schema#>
+PREFIX foaf:    <http://xmlns.com/foaf/0.1/>
+SELECT ?paper ?position ?name ?person
+WHERE {
+  GRAPH <%RUN_GRAPH%>           { ?m locx:asserts <%ASSERTION%> ; locx:valid true ; prov:wasDerivedFrom ?paper . }
+  GRAPH <urn:locx:graph:papers> { ?paper locx:hasAuthorship ?s . ?s locx:position ?position ; locx:author ?person .
+                                  ?person foaf:name ?name . }
+}
+ORDER BY ?paper ?position

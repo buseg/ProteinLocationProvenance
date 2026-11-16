@@ -1,0 +1,14 @@
+# Demo / Assertion detail and Conflicts: the GOA rows behind the verdict
+PREFIX locx:    <http://example.org/locx/>
+PREFIX prov:    <http://www.w3.org/ns/prov#>
+PREFIX dcterms: <http://purl.org/dc/terms/>
+PREFIX rdfs:    <http://www.w3.org/2000/01/rdf-schema#>
+PREFIX foaf:    <http://xmlns.com/foaf/0.1/>
+SELECT ?label ?qualifier ?negated ?evidence ?source ?assignedBy
+WHERE {
+  GRAPH <urn:locx:graph:verdicts>  { <%ASSERTION%> locx:goaMatch ?g . }
+  GRAPH <urn:locx:graph:goa-human> { ?g locx:location ?t ; locx:qualifier ?qualifier ; locx:negated ?negated ;
+                                        locx:evidenceCode ?evidence .
+                                     OPTIONAL { ?g dcterms:source ?source } OPTIONAL { ?g locx:assignedBy ?assignedBy } }
+  GRAPH <urn:locx:graph:go-cc>     { ?t rdfs:label ?label . }
+}

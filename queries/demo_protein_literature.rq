@@ -1,0 +1,18 @@
+# Demo / Protein explorer: the literature side for one protein (%PROTEIN% = UniProt IRI)
+PREFIX locx:    <http://example.org/locx/>
+PREFIX prov:    <http://www.w3.org/ns/prov#>
+PREFIX dcterms: <http://purl.org/dc/terms/>
+PREFIX rdfs:    <http://www.w3.org/2000/01/rdf-schema#>
+PREFIX foaf:    <http://xmlns.com/foaf/0.1/>
+SELECT ?a ?term ?label ?polarity ?verdict ?nPapers ?nGroups ?nFinding ?nBackground ?yearFirst ?yearLast ?context
+WHERE {
+  GRAPH <urn:locx:graph:assertions> { ?a locx:protein <%PROTEIN%> ; locx:location ?term ; locx:polarity ?polarity . }
+  GRAPH <urn:locx:graph:go-cc>      { ?term rdfs:label ?label . }
+  GRAPH <urn:locx:graph:verdicts>   {
+    ?a locx:verdict ?verdict ; locx:nPapers ?nPapers ; locx:nGroups ?nGroups ;
+       locx:nPapersFinding ?nFinding ; locx:nPapersBackground ?nBackground .
+    OPTIONAL { ?a locx:yearFirst ?yearFirst ; locx:yearLast ?yearLast }
+    OPTIONAL { ?a locx:contextDependent ?context }
+  }
+}
+ORDER BY DESC(?nGroups) DESC(?nPapers)

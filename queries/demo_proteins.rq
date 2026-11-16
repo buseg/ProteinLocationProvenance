@@ -1,0 +1,13 @@
+# Demo / Protein explorer: proteins that have at least one assertion (for the picker)
+PREFIX locx:    <http://example.org/locx/>
+PREFIX prov:    <http://www.w3.org/ns/prov#>
+PREFIX dcterms: <http://purl.org/dc/terms/>
+PREFIX rdfs:    <http://www.w3.org/2000/01/rdf-schema#>
+PREFIX foaf:    <http://xmlns.com/foaf/0.1/>
+SELECT ?protein ?symbol ?name (COUNT(?a) AS ?assertions)
+WHERE {
+  GRAPH <urn:locx:graph:assertions>    { ?a locx:protein ?protein . }
+  GRAPH <urn:locx:graph:uniprot-human> { ?protein locx:geneSymbol ?symbol . OPTIONAL { ?protein locx:proteinName ?name } }
+}
+GROUP BY ?protein ?symbol ?name
+ORDER BY DESC(?assertions) ?symbol

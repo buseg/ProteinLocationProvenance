@@ -1,0 +1,16 @@
+# Demo / Protein explorer: the curated side for one protein (GOA CC rows; ND left out)
+PREFIX locx:    <http://example.org/locx/>
+PREFIX prov:    <http://www.w3.org/ns/prov#>
+PREFIX dcterms: <http://purl.org/dc/terms/>
+PREFIX rdfs:    <http://www.w3.org/2000/01/rdf-schema#>
+PREFIX foaf:    <http://xmlns.com/foaf/0.1/>
+SELECT ?term ?label ?qualifier ?negated ?evidence ?source
+WHERE {
+  GRAPH <urn:locx:graph:goa-human> {
+    ?g locx:protein <%PROTEIN%> ; locx:location ?term ; locx:qualifier ?qualifier ;
+       locx:negated ?negated ; locx:evidenceCode ?evidence .
+    OPTIONAL { ?g dcterms:source ?source }
+  }
+  FILTER (?evidence != "ND")
+  GRAPH <urn:locx:graph:go-cc> { ?term rdfs:label ?label . }
+}
