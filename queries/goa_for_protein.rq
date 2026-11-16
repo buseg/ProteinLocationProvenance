@@ -1,0 +1,12 @@
+# M10: what GOA says about one protein (CC terms with evidence codes) — context for "novel" examples.
+# %PROTEIN% is a UniProt IRI. ND rows are left out, as in the verdict rules.
+PREFIX locx: <http://example.org/locx/>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+SELECT ?label (GROUP_CONCAT(DISTINCT ?ev; separator=",") AS ?evidence) (MAX(?neg) AS ?anyNot)
+WHERE {
+  GRAPH <urn:locx:graph:goa-human> { ?g locx:protein <%PROTEIN%> ; locx:location ?t ; locx:evidenceCode ?ev ; locx:negated ?neg . }
+  FILTER (?ev != "ND")
+  GRAPH <urn:locx:graph:go-cc> { ?t rdfs:label ?label . }
+}
+GROUP BY ?label
+ORDER BY ?label

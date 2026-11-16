@@ -1,0 +1,377 @@
+"""M10: reports/progress_stats.md (+ reports/fig_*.png) from the scripts' outputs and live Fuseki queries.
+
+  python -m locx.analysis.report [--run-id ID]
+
+Every number comes from a file under reports/ or data/, or from a query in queries/. The only
+hand-written text is reports/worked_examples_notes.json: the reviewer's notes on the picked worked
+examples (e.g. a known normalization error), merged in verbatim.
+"""
+import argparse
+import csv
+import json
+from collections import Counter, defaultdict
+from datetime import datetime
+
+import matplotlib
+
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt  # noqa: E402
+import matplotlib.ticker  # noqa: E402,F401
+
+from locx.config import CFG, DATA, INTERIM, QUERIES, REPORTS  # noqa: E402
+from locx.io import read_jsonl  # noqa: E402
+from locx.kg import fuseki  # noqa: E402
+from locx.kg.ttl import LOCX  # noqa: E402
+
+RUNS = DATA / "runs"
+G = CFG["graphs"]
+VERDICTS = ["Consistent", "Refinement", "Novel", "Conflicting", "Uninformative", "Error"]
+# reference palette (dataviz skill), light mode
+SURFACE, INK, INK2, GRID = "#fcfcfb", "#0b0b0b", "#52514e", "#e4e3df"
+BLUE, ORANGE = "#2a78d6", "#eb6834"
+
+
+def J(name):
+    return json.loads((REPORTS / name).read_text())
+
+
+def pct(x, d=1):
+    return f"{100 * x:.{d}f}%"
+
+
+def table(header, rows):
+    out = ["| " + " | ".join(header) + " |", "|" + "---|" * len(header)]
+    out += ["| " + " | ".join(str(c) for c in r) + " |" for r in rows]
+    return out
+
+
+# --- figures ---------------------------------------------------------------------------------------
+def style(ax, title, ylabel=None):
+    ax.set_facecolor(SURFACE)
+    ax.figure.set_facecolor(SURFACE)
+    for s in ("top", "right", "left"):
+        ax.spines[s].set_visible(False)
+    ax.spines["bottom"].set_color(INK2)
+    ax.tick_params(colors=INK2, labelsize=11, length=0)
+    ax.yaxis.grid(True, color=GRID, linewidth=0.8)
+    ax.set_axisbelow(True)
+    ax.set_title(title, color=INK, fontsize=14, loc="left", pad=12)
+    if ylabel:
+        ax.set_ylabel(ylabel, color=INK2, fontsize=11)
+
+
+def label_bars(ax, bars, fmt):
+    for b in bars:
+        ax.annotate(fmt(b.get_height()), (b.get_x() + b.get_width() / 2, b.get_height()),
+                    xytext=(0, 4), textcoords="offset points", ha="center", va="bottom", color=INK, fontsize=10)
+
+
+def figures(verdicts, claims, stats_rows, silver):
+    files = []
+    # 1. verdict distribution
+    fig, ax = plt.subplots(figsize=(8, 4.5), dpi=150)
+    vs = [v for v in VERDICTS if verdicts["verdicts"][v]]
+    bars = ax.bar(vs, [verdicts["verdicts"][v] for v in vs], width=0.55, color=BLUE)
+    label_bars(ax, bars, lambda h: f"{int(h):,}")
+    style(ax, f"Verdicts of {verdicts['assertions']:,} assertions against GOA", "assertions")
+    fig.tight_layout()
+    fig.savefig(REPORTS / "fig_verdicts.png")
+    files.append("fig_verdicts.png")
+    plt.close(fig)
+
+    # 2. valid claims per publication year, by tier (two series, stacked)
+    papers = {p["pmid"]: p for p in read_jsonl(INTERIM / "papers.jsonl")}
+    by = {t: Counter() for t in ("silver", "discovery")}
+    for c in claims:
+        y = papers[c["pmid"]].get("year")
+        if y:
+            for t in by:
+                if t in c["tiers"]:
+                    by[t][int(y)] += 1
+    years = list(range(min(min(v) for v in by.values() if v), max(max(v) for v in by.values() if v) + 1))
+    fig, ax = plt.subplots(figsize=(10, 4.5), dpi=150)
+    s = [by["silver"][y] for y in years]
+    d = [by["discovery"][y] for y in years]
+    ax.bar(years, s, width=0.8, color=BLUE, label="silver (GOA-cited)", edgecolor=SURFACE, linewidth=1)
+    ax.bar(years, d, width=0.8, bottom=s, color=ORANGE, label="discovery (2023–2026)", edgecolor=SURFACE, linewidth=1)
+    style(ax, "Valid claims per publication year", "valid claims")
+    ax.legend(frameon=False, labelcolor=INK2, loc="upper left")
+    fig.tight_layout()
+    fig.savefig(REPORTS / "fig_claims_per_year.png")
+    files.append("fig_claims_per_year.png")
+    plt.close(fig)
+
+    # 3. independent author groups behind novel assertions
+    ng = Counter(min(int(r["n_groups"]), 5) for r in stats_rows if r["verdict"] == "Novel")
+    fig, ax = plt.subplots(figsize=(7, 4.5), dpi=150)
+    xs = ["1", "2", "3", "4", "5+"]
+    bars = ax.bar(xs, [ng[i] for i in range(1, 6)], width=0.55, color=BLUE)
+    label_bars(ax, bars, lambda h: f"{int(h):,}")
+    style(ax, "Novel assertions by number of independent author groups", "novel assertions")
+    ax.set_xlabel("author groups supporting the assertion", color=INK2, fontsize=11)
+    fig.tight_layout()
+    fig.savefig(REPORTS / "fig_novel_groups.png")
+    files.append("fig_novel_groups.png")
+    plt.close(fig)
+
+    # 4. silver recall: ceiling vs LLM vs co-occurrence (exact, ±1 step)
+    names = ["Ceiling\n(term in abstract)", "LLM\n(valid claims)", "Co-occurrence\nbaseline"]
+    ex = [silver["coverage"]["exact"], silver["llm"]["recall_exact"], silver["cooccurrence_baseline"]["recall_exact"]]
+    hi = [silver["coverage"]["hierarchical"], silver["llm"]["recall_hierarchical"],
+          silver["cooccurrence_baseline"]["recall_hierarchical"]]
+    fig, ax = plt.subplots(figsize=(8, 4.5), dpi=150)
+    x = range(len(names))
+    b1 = ax.bar([i - 0.15 for i in x], ex, width=0.28, color=BLUE, label="exact GO term", edgecolor=SURFACE, linewidth=1)
+    b2 = ax.bar([i + 0.15 for i in x], hi, width=0.28, color=ORANGE, label="±1 is_a/part_of step", edgecolor=SURFACE, linewidth=1)
+    label_bars(ax, list(b1) + list(b2), lambda h: pct(h, 0))
+    ax.set_xticks(list(x), names)
+    ax.set_ylim(0, max(hi) * 1.25)
+    ax.yaxis.set_major_formatter(matplotlib.ticker.PercentFormatter(1.0, decimals=0))
+    style(ax, f"Recall of {silver['expected_pairs']:,} GOA pairs from silver abstracts", "recall")
+    ax.legend(frameon=False, labelcolor=INK2, loc="upper right")
+    fig.tight_layout()
+    fig.savefig(REPORTS / "fig_recall.png")
+    files.append("fig_recall.png")
+    plt.close(fig)
+    return files
+
+
+# --- worked examples --------------------------------------------------------------------------------
+def worked_examples(run_id, claims, stats, papers, notes):
+    run_graph = G["run_prefix"] + run_id
+    mention_iri = {r["cid"]: r["m"] for r in fuseki.select(
+        f"PREFIX locx: <{LOCX}> SELECT ?m ?cid WHERE {{ GRAPH <{run_graph}> {{ ?m locx:claimId ?cid }} }}")}
+    by_a = defaultdict(list)
+    for c in claims:
+        by_a[f"{c['protein']['uniprot']}_{c['location']['go_id'].replace(':', '_')}_{c['polarity']}"].append(c)
+    ok = lambda c: (c["source_type"] == "finding" and not {"protein_coref", "location_coref", "too_generic"} & set(c["flags"]))  # noqa: E731
+    q_ex = (QUERIES / "worked_example.rq").read_text()
+    q_goa = (QUERIES / "goa_for_protein.rq").read_text()
+    out, picked = [], []
+    for v in VERDICTS:
+        ranked = sorted((s for s in stats if s["verdict"] == v),
+                        key=lambda s: (-int(s["n_groups"]), -int(s["n_papers"]), s["assertion"]))
+        seen, chosen = set(), []
+        for s in ranked:
+            if s["uniprot"] in seen:
+                continue
+            cs = sorted((c for c in by_a[s["assertion"]] if ok(c)), key=lambda c: int(c["pmid"]))
+            if cs:
+                chosen.append((s, cs[0]))
+                seen.add(s["uniprot"])
+            if len(chosen) == 3:
+                break
+        if not chosen:
+            continue
+        out += [f"### {v}", ""]
+        for s, c in chosen:
+            m = mention_iri[c["claim_id"]]
+            rows = fuseki.select(q_ex.replace("%RUN_GRAPH%", run_graph).replace("%MENTION%", m)
+                                 .replace("%ASSERTION%", f"{LOCX}assertion/{s['assertion']}"))
+            r0 = rows[0]
+            p = papers[c["pmid"]]
+            authors = [a["name"] for a in p.get("authors") or [] if a.get("name")]
+            auth = ", ".join(authors[:3]) + (" et al." if len(authors) > 3 else "")
+            out.append(f"**{s['symbol']} — {s['location']} ({s['polarity']})** · {s['n_papers']} paper(s), "
+                       f"{s['n_groups']} author group(s){' · context-dependent' if s['context'] == 'True' else ''}")
+            out.append("")
+            out.append(f"> {r0['sentence']}")
+            out.append(">")
+            out.append(f"> — {auth} ({r0.get('year', '?')}). *{r0['title']}* {r0.get('journal', '')}. "
+                       f"PMID [{c['pmid']}](https://pubmed.ncbi.nlm.nih.gov/{c['pmid']}/); "
+                       f"method: {c['method']}; organism: {c['organism']}"
+                       + (f"; condition: {'; '.join(c['conditions'])}" if c["conditions"] else ""))
+            out.append("")
+            goa = [r for r in rows if r.get("evidence")]
+            if goa:
+                agg = defaultdict(set)
+                for r in goa:
+                    key = (r["goaLabel"], r["qualifier"], r["negated"] == "true")
+                    agg[key].add(r["evidence"] + (f" PMID {r['source'].rsplit('/', 1)[-1]}" if r.get("source") else ""))
+                out.append("GOA side: " + "; ".join(
+                    f"{'NOT ' if neg else ''}{q} *{lab}* [{', '.join(sorted(evs)[:4])}{' …' if len(evs) > 4 else ''}]"
+                    for (lab, q, neg), evs in sorted(agg.items())))
+            else:
+                g = fuseki.select(q_goa.replace("%PROTEIN%", f"http://purl.uniprot.org/uniprot/{s['uniprot']}"))
+                out.append("GOA side: nothing in this term's lineage; GOA has for this protein: "
+                           + ("; ".join(f"{r['label']} [{r['evidence']}]" for r in g[:8]) + (" …" if len(g) > 8 else "")
+                              if g else "no CC annotation"))
+            note = notes.get(c["claim_id"])
+            if note:
+                out.append("")
+                out.append(f"*Reviewer note (Claude Opus 5.5):* {note}")
+            out.append("")
+            picked.append({"verdict": v, "claim_id": c["claim_id"], "assertion": s["assertion"], "pmid": c["pmid"],
+                           "symbol": s["symbol"], "location": s["location"], "sentence": c["sentence_text"]})
+    (REPORTS / "worked_examples_picked.json").write_text(json.dumps(picked, indent=2))
+    return out
+
+
+# --- runs / GPU hours --------------------------------------------------------------------------------
+def runs_table():
+    rows, total = [], 0.0
+    for d in sorted(RUNS.iterdir()):
+        if not (d / "run.json").exists():
+            continue
+        m = json.loads((d / "run.json").read_text())
+        hours = gpu_h = req = 0
+        for s in m.get("sessions", []):
+            h = (datetime.fromisoformat(s["ended"]) - datetime.fromisoformat(s["started"])).total_seconds() / 3600
+            hours += h
+            gpu_h += h * len(s.get("endpoints") or [m["endpoint"]])
+            req += s.get("requests", 0)
+        total += gpu_h
+        purpose = ("prompt tuning (sample)" if m.get("sample") else
+                   "dev (prompt review)" if m["tiers"] == ["dev"] else
+                   "expanded corpus" if "expanded" in m.get("input", "") else "MVP full run")
+        status = "finished" if m.get("ended") else "running / incomplete"
+        rows.append([f"`{m['run_id']}`", purpose, m["prompt_version"], req, f"{hours:.2f}", f"{gpu_h:.2f}", status])
+    return rows, total
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--run-id", default=CFG["extract"]["main_run"])
+    a = ap.parse_args()
+    rid = a.run_id
+    kg, corpus, cand = J("kg_stats.json"), J("corpus_stats.json"), J("candidates_stats.json")
+    ext, peval = J(f"extract_{rid}.json"), J(f"prompt_eval_{rid}.json")
+    val, rdf, ver = J(f"validation_{rid}.json"), J("rdf_stats.json"), J("verdicts.json")
+    silver, prec = J("silver_eval.json"), J("precision.json")
+    notes_path = REPORTS / "worked_examples_notes.json"
+    notes = json.loads(notes_path.read_text()) if notes_path.exists() else {}
+    claims_all = list(read_jsonl(RUNS / rid / "claims_final.jsonl"))
+    claims = [c for c in claims_all if c["valid"]]
+    with open(REPORTS / "assertion_stats.tsv") as f:
+        stats = list(csv.DictReader(f, delimiter="\t"))
+    for s in stats:
+        s["assertion"] = f"{s['uniprot']}_{s['go_id'].replace(':', '_')}_{s['polarity']}"
+    papers = {p["pmid"]: p for p in read_jsonl(INTERIM / "papers.jsonl")}
+    cands = {r["pmid"] for r in read_jsonl(INTERIM / "candidates.jsonl")}
+    raw = {}
+    for r in read_jsonl(RUNS / rid / "raw.jsonl"):
+        if r["pmid"] in cands:
+            raw[r["pmid"]] = r
+    rc = [cl for r in raw.values() if r["status"] == "ok" for cl in r["claims"]]
+    graphs = {g: fuseki.count(g) for g in [G["go_cc"], G["goa"], G["uniprot"], G["papers"], G["assertions"],
+                                            G["run_prefix"] + rid, G["verdicts"]]}
+    fig_files = figures(ver, claims, stats, silver)
+
+    md = [f"# locx progress statistics", "",
+          f"Generated {datetime.now():%Y-%m-%d %H:%M} by `make report` from `reports/*.json` and live SPARQL queries. "
+          f"Run `{rid}` (prompt {json.loads((RUNS / rid / 'run.json').read_text())['prompt_version']}, "
+          f"{json.loads((RUNS / rid / 'run.json').read_text())['model']}).", ""]
+
+    md += ["## 1. Knowledge graph", ""]
+    md += table(["named graph", "triples"], [[f"`{g}`", f"{n:,}"] for g, n in graphs.items()])
+    gc, ga, gu = kg["go_cc"], kg["goa_human_cc"], kg["uniprot_human"]
+    md += ["", f"GO {gc['go_data_version']}: {gc['cc_terms']:,} CC terms ({gc['is_a_edges']:,} is_a, {gc['part_of_edges']:,} part_of; "
+           f"{gc['non_human_terms']} non-human). GOA human: {ga['cc_rows']:,} CC rows, {ga['not_rows']} NOT rows, "
+           f"{ga['proteins']:,} proteins, {ga['distinct_pmids']:,} cited PMIDs. UniProt human Swiss-Prot: {gu['entries']:,} entries "
+           f"({gu['with_gene_id']:,} with an NCBI GeneID). GO CC dictionary: {gc['dictionary_texts']:,} surface texts.", ""]
+
+    md += ["## 2. Corpus", ""]
+    rows = []
+    with_claim = Counter(t for r in raw.values() if r["status"] == "ok" and r["claims"] for t in r["tiers"])
+    with_valid = Counter(t for p in {c["pmid"] for c in claims} for t in papers[p]["tiers"])
+    for t in ("dev", "silver", "discovery"):
+        pt, ct = corpus["per_tier"][t], cand["per_tier"][t]
+        rows.append([t, pt["selected"], pt["kept"], ct["kept"],
+                     with_claim[t] if t != "dev" else "–", with_valid[t] if t != "dev" else "–",
+                     pct(pt["share_with_orcid"], 0)])
+    md += table(["tier", "selected", "with abstract + PubTator", "kept by prefilter", "≥1 claim", "≥1 valid claim", "with ORCID"], rows)
+    md += ["", f"Discovery: {CFG['corpus']['discovery_cap']:,} papers, 750 per year 2023–2026, top Europe PMC relevance with ≥1 "
+           f"human Swiss-Prot gene. Gene mentions: {cand['gene_mentions']['human']:,} human, "
+           f"{cand['gene_mentions']['non_human']:,} non-human ({pct(cand['gene_mentions']['share_non_human'], 0)}, no orthology mapping). "
+           "The dev tier was used for prompt review only.", ""]
+
+    md += ["## 3. Extraction", ""]
+    tp = ext.get("throughput_this_session", {})
+    md += [f"{ext['abstracts']:,} abstracts, error rate {pct(ext['error_rate'], 2)}, bad JSON {pct(ext['bad_json_rate'], 2)} "
+           f"({ext['truncated_max_tokens']} hit max_tokens). {len(rc):,} raw claims "
+           f"({len(rc) / sum(1 for r in raw.values() if r['status'] == 'ok'):.2f} per abstract): "
+           f"finding {sum(c['source_type'] == 'finding' for c in rc):,}, background {sum(c['source_type'] == 'background' for c in rc):,}; "
+           f"hedged {sum(c['certainty'] == 'hedged' for c in rc):,}; absent {sum(c['polarity'] == 'absent' for c in rc):,}; "
+           f"OTHER location {sum(c['location'] == 'OTHER' for c in rc):,}. "
+           f"Throughput {tp.get('abstracts_per_s', '?')} abstracts/s (1 GPU, concurrency {CFG['llm']['concurrency']}); "
+           f"tokens per abstract: prompt {ext['tokens']['prompt_mean']:,}, completion {ext['tokens']['completion_mean']}.", ""]
+    md += table(["tier", "abstracts", "claims", "claims / abstract", "≥1 claim"],
+                [[t, v["abstracts"], f"{v['claims']:,}", v["claims_per_abstract"], pct(v["share_with_claim"], 0)]
+                 for t, v in ext["per_tier"].items()])
+    v1d, v2d = J("prompt_eval_gemma4-31b_20261116-1636.json"), J("prompt_eval_gemma4-31b_20261116-1649.json")
+    v1s, v2s = J("prompt_eval_gemma4-31b_20261116-1645.json"), J("prompt_eval_gemma4-31b_20261116-1651.json")
+    md += ["", "Prompt v1 → v2 (automatic checks, `locx/extract/check.py`; dev = 116 abstracts, silver = fixed sample of 200):", ""]
+    md += table(["check", "v1 dev", "v2 dev", "v1 silver", "v2 silver"], [
+        ["'absent' with only a reduction cue", v1d["absent_reduction_only"], v2d["absent_reduction_only"],
+         v1s["absent_reduction_only"], v2s["absent_reduction_only"]],
+        ["method not stated although the abstract names one", pct(v1d["finding_method_not_stated_but_abstract_names_one"], 0),
+         pct(v2d["finding_method_not_stated_but_abstract_names_one"], 0),
+         pct(v1s["finding_method_not_stated_but_abstract_names_one"], 0), pct(v2s["finding_method_not_stated_but_abstract_names_one"], 0)],
+        ["organism not stated although a non-human species is named", pct(v1d["finding_organism_not_stated_but_nonhuman_word"], 0),
+         pct(v2d["finding_organism_not_stated_but_nonhuman_word"], 0),
+         pct(v1s["finding_organism_not_stated_but_nonhuman_word"], 0), pct(v2s["finding_organism_not_stated_but_nonhuman_word"], 0)],
+        ["silver recall vs GOA (lineage match)", "–", "–", pct(v1s["silver"]["recall"]), pct(v2s["silver"]["recall"])]])
+
+    md += ["", "## 4. Validation", ""]
+    t = val["totals"]
+    flag_rows = [[k[5:], f"{v:,}", "invalid" if k[5:] in ("protein_not_in_sentence", "location_not_in_sentence", "other_ungrounded") else "warning / info"]
+                 for k, v in sorted(t.items()) if k.startswith("flag_")]
+    flag_rows += [[f, f"{rdf['quality_flags'].get(f, 0):,}", "invalid (SHACL)" if f == "impossible_location" else "warning (SHACL)"]
+                  for f in ("impossible_location", "too_generic")]
+    md += [f"{t['claims_raw']:,} raw claims → {t['claims']:,} after merging duplicates; {t.get('abstracts_bad_json', 0)} abstracts with bad JSON.", ""]
+    md += table(["flag", "claims", "effect"], flag_rows)
+    md += ["", f"**Valid claims: {rdf['valid']:,} of {rdf['mentions']:,} ({pct(rdf['share_valid'])})**; "
+           + ", ".join(f"{k} {pct(v['share_valid'])}" for k, v in rdf["per_tier"].items())
+           + f". SHACL gate shapes conform: {rdf['gate_conforms']}. Repair loop: not built (Later).", ""]
+
+    md += ["## 5. Verdicts", ""]
+    md += table(["verdict", "assertions", "share", "silver", "discovery"],
+                [[v, f"{ver['verdicts'][v]:,}", pct(ver["verdicts_share"][v]), ver["per_tier"]["silver"][v],
+                  ver["per_tier"]["discovery"][v]] for v in VERDICTS])
+    ev = ver["goa_evidence_behind_verdict"]
+    md += ["", f"{ver['assertions']:,} assertions (unique protein + GO term + polarity). GOA rows behind the verdict include "
+           f"experimental evidence for {ev['Consistent'].get('experimental', 0):,} of {sum(ev['Consistent'].values()):,} consistent, "
+           f"{ev['Refinement'].get('experimental', 0)} of {sum(ev['Refinement'].values())} refinement and "
+           f"{ev['Conflicting'].get('experimental', 0)} of {sum(ev['Conflicting'].values())} conflicting assertions. "
+           f"Context-dependent (a supporting mention states a condition): {ver['context_dependent']:,}. "
+           f"Supported by a paper that GOA itself cites: {ver['curated_from_same_paper']:,}. "
+           f"Novel assertions by independent author groups: "
+           + ", ".join(f"{k} group{'s' if k != '1' else ''}: {v}" for k, v in ver["novel_by_n_groups"].items()) + ".",
+           "", "Caveats: the top novel assertions are dominated by PubTator gene-normalization errors on ambiguous symbols "
+           "(e.g. TAZ → TAFAZZIN instead of WWTR1); conflicting is mostly absent-polarity claims (translocation / disease "
+           "context) against GOA nucleus annotations. Author groups are approximate (no disambiguation without ORCID).", ""]
+
+    md += ["## 6. Evaluation", ""]
+    L, B = silver["llm"], silver["cooccurrence_baseline"]
+    md += [f"Silver recall: {silver['expected_pairs']:,} expected GOA pairs (low-throughput experimental evidence; "
+           f"{silver['removed_protein_not_candidate']:,} removed because the protein is not a candidate).", ""]
+    md += table(["", "recall exact", "recall ±1 step", "pairs produced", "agreement with GOA (exact / ±1)"], [
+        ["ceiling (protein and term are candidates)", pct(silver["coverage"]["exact"]), pct(silver["coverage"]["hierarchical"]), "", ""],
+        ["**LLM**", f"**{pct(L['recall_exact'])}**", f"**{pct(L['recall_hierarchical'])}**", f"{L['pairs']:,}",
+         f"{pct(L['goa_agreement_exact'])} / {pct(L['goa_agreement_hierarchical'])}"],
+        ["co-occurrence baseline", pct(B["recall_exact"]), pct(B["recall_hierarchical"]), f"{B['pairs']:,}",
+         f"{pct(B['goa_agreement_exact'])} / {pct(B['goa_agreement_hierarchical'])}"]])
+    pa = prec["all"]
+    md += ["", f"Precision (manual, judged by {', '.join(prec['judges'])}; rubric `reports/precision_rubric.md`): "
+           f"**{pa['correct']}/{pa['n']} = {pct(pa['precision'])}** (95% Wilson {pct(pa['wilson95'][0])}–{pct(pa['wilson95'][1])}); "
+           f"discovery {pct(prec['discovery']['precision'])}, silver {pct(prec['silver']['precision'])}. Errors: "
+           + ", ".join(f"{k} {v}" for k, v in prec["error_types"].items())
+           + ". The judge is an LLM that also helped design the pipeline, not an independent annotator.",
+           "", f"*{silver['caveat']}*", ""]
+
+    md += ["## 7. Runs and GPU hours", ""]
+    rr, total = runs_table()
+    md += table(["run", "purpose", "prompt", "requests", "wall h", "GPU h", "status"], rr)
+    md += ["", f"Total GPU hours of finished sessions: **{total:.2f}** (RTX A6000; vLLM {json.loads((RUNS / rid / 'run.json').read_text())['vllm_version']}).", ""]
+
+    md += ["## 8. Figures", ""] + [f"![{f}]({f})" for f in fig_files] + [""]
+    md += ["## 9. Worked examples (3 per verdict)", "",
+           "Picked by a fixed rule: valid 'finding' mentions without coreference warnings, strongest support first "
+           "(author groups, then papers), three different proteins per verdict. Known errors are noted, not skipped.", ""]
+    md += worked_examples(rid, claims, stats, papers, notes)
+    (REPORTS / "progress_stats.md").write_text("\n".join(md) + "\n")
+    print(f"[report] reports/progress_stats.md ({len(md)} lines), figures: {', '.join(fig_files)}")
+
+
+if __name__ == "__main__":
+    main()
