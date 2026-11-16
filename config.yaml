@@ -23,9 +23,12 @@ corpus:
   dev_per_protein: 25
   dev_years: [2015, 2026]
   discovery_years: [2023, 2026]
-  discovery_cap: 3000      # MVP; later up to 20000
+  discovery_cap: 3000      # MVP; expanded set (10000) built 2026-11-16, on hold
+  discovery_cap_expanded: 10000
+  discovery_max_screen_per_year: 8000
   discovery_stratify: year # cap split evenly over discovery_years (DECISIONS 2026-11-16)
-  silver_sample: 1000      # MVP; later up to 5000
+  silver_sample: 1000      # MVP; expanded set (5000) on hold
+  silver_sample_expanded: 5000
   seed: 13
   dev_seeds:               # symbol: names used in the Europe PMC query (SPEC M3.1)
     TP53: ["p53", "TP53"]

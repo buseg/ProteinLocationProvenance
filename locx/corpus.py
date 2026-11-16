@@ -58,12 +58,13 @@ def silver_tier(pairs):
     return sample, recs, {"pool": len(pool), "sampled": len(sample), "seed": C["seed"]}
 
 
-def discovery_tier(gene2acc, step: int = 250, max_screen: int = 4000):
+def discovery_tier(gene2acc, step: int = 250, max_screen: int | None = None):
     """Per year: walk down Europe PMC's relevance ranking and keep the first papers that have an
     abstract in PubTator and >= 1 gene mapping to human Swiss-Prot, until discovery_cap / n_years."""
     y0, y1 = C["discovery_years"]
     years = list(range(y0, y1 + 1))
     per_year = C["discovery_cap"] // len(years)
+    max_screen = max_screen or C.get("discovery_max_screen_per_year", 4000)
     recs, meta = [], {"order": "Europe PMC relevance within each year; kept if >= 1 human Swiss-Prot gene",
                       "per_year": {}, "queries": {}}
     seen = set()  # a paper can rank in two year queries (e.g. online vs print year); keep it once
