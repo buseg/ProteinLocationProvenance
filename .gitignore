@@ -1,0 +1,11 @@
+# secrets
+.env
+
+# data (rebuilt by make targets)
+data/
+
+# python
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+logs/

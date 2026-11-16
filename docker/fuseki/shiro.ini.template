@@ -1,0 +1,19 @@
+# Rendered by scripts/fuseki.sh into data/fuseki/base/shiro.ini (gitignored, mode 600).
+# The server is localhost-only, but localhost is shared by all users of this machine,
+# so admin and write endpoints need the admin password. Reads stay open.
+[main]
+ssl.enabled = false
+plainMatcher = org.apache.shiro.authc.credential.SimpleCredentialsMatcher
+iniRealm.credentialsMatcher = $plainMatcher
+
+[users]
+admin = ${FUSEKI_ADMIN_PASSWORD}
+
+[urls]
+/$/ping       = anon
+/$/server     = anon
+/$/**         = authcBasic,user[admin]
+/locx/update  = authcBasic,user[admin]
+/locx/data    = authcBasic,user[admin]
+/locx/upload  = authcBasic,user[admin]
+/**           = anon
