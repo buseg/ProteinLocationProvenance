@@ -5,7 +5,7 @@ PREFIX dcterms: <http://purl.org/dc/terms/>
 PREFIX rdfs:    <http://www.w3.org/2000/01/rdf-schema#>
 PREFIX foaf:    <http://xmlns.com/foaf/0.1/>
 SELECT ?symbol ?protein ?label ?term ?polarity ?verdict ?nPapers ?nGroups ?nFinding ?nBackground ?nHedged
-       ?yearFirst ?yearLast ?nOpposing ?sameAsGOA ?context ?weak ?experimental
+       ?yearFirst ?yearLast ?nOpposing ?sameAsGOA ?context ?weak ?experimental ?evidence
 WHERE {
   GRAPH <urn:locx:graph:assertions>    { <%ASSERTION%> locx:protein ?protein ; locx:location ?term ; locx:polarity ?polarity . }
   GRAPH <urn:locx:graph:uniprot-human> { ?protein locx:geneSymbol ?symbol . }
@@ -18,5 +18,6 @@ WHERE {
     OPTIONAL { <%ASSERTION%> locx:contextDependent ?context }
     OPTIONAL { <%ASSERTION%> locx:weakGoaMatch ?weak }
     OPTIONAL { <%ASSERTION%> locx:goaExperimental ?experimental }
+    OPTIONAL { <%ASSERTION%> locx:goaEvidence ?evidence }
   }
 }

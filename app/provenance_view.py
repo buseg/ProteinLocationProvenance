@@ -11,6 +11,8 @@ import html
 import re
 from collections import defaultdict
 
+import evidence_ui as EV
+
 PUBMED = "https://pubmed.ncbi.nlm.nih.gov/"
 W = 1300                             # drawn at natural size (no scaling), the page scrolls sideways if narrower
 X_PAPER, W_PAPER = 8, 360            # group boxes; paper cards inside are inset by 10
@@ -228,11 +230,12 @@ def build(a, mention_rows, authors, goa_rows, run, max_papers=12, colors=None):
     verdict = local(a.get("verdict"))
     vcol = colors.get(verdict, INK2)
     mid = (TOP + content_bottom) / 2 if claim_pos else TOP + 80
-    ah = 196
+    ah = 220
     ay = max(TOP, min(mid - ah / 2, content_bottom - ah))
     pol = local(a.get("polarity")).lower()
     inner = (f"<div class='big'>{esc(a.get('symbol'))} {'NOT ' if pol == 'absent' else ''}in {esc(a.get('label'))}</div>"
-             f"<div><span class='chip' style='background:{vcol}'>{esc(verdict)}</span> vs GOA</div>"
+             f"<div><span class='chip' style='background:{vcol}'>{esc(verdict)}</span> vs GOA"
+             + (f" &nbsp;{EV.badge(a.get('evidence'), small=True)}" if a.get("evidence") else "") + "</div>"
              f"<div style='margin-top:6px'>{esc(a.get('nPapers'))} papers · <b>{esc(a.get('nGroups'))} independent "
              f"author groups</b></div><div style='color:{INK2}'>finding {esc(a.get('nFinding'))} · background "
              f"{esc(a.get('nBackground'))} · hedged {esc(a.get('nHedged'))}<br>{esc(a.get('yearFirst', '?'))}–"
@@ -265,8 +268,10 @@ def build(a, mention_rows, authors, goa_rows, run, max_papers=12, colors=None):
             u = pmid_url(first) if "pubmed" in first else None
             src_html = (f" · <a href='{u}' target='_blank'>PMID {esc(local(first))}</a>" if u else f" · {esc(local(first))}") \
                 + (f" +{len(srcs) - 1}" if len(srcs) > 1 else "")
+        best = next(iter(EV.groups_of(e["ev"])), None)
         inner = (f"<div class='h' title='{esc(LINK_TEXT[link])}'>{'<span class=not>NOT</span> ' if neg else ''}"
-                 f"<b>{esc(label)}</b> · <span style='color:{INK2}'>{esc(LINK_SHORT[link])}</span></div><div class='meta'>"
+                 f"<b>{esc(label)}</b> · <span style='color:{INK2}'>{esc(LINK_SHORT[link])}</span></div><div class='meta' "
+                 f"title='{esc(EV.code_title(e['ev']))}'>{EV.badge(best, small=True)} "
                  f"{esc(', '.join(sorted(e['ev'])))}{src_html} · {esc(', '.join(sorted(e['by']))[:30])}</div>")
         parts.append(fo(X_GOA, gy, W_GOA, GOA_H, inner, "card goa"))
         edges.append(edge(X_ASSERT + W_ASSERT, ay + ah / 2, X_GOA, gy + GOA_H / 2,

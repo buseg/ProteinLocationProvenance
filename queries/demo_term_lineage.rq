@@ -1,0 +1,10 @@
+# Demo / Translocations: which of the given GO terms lie on each other's lineage (is_a / part_of, any depth).
+#   Two claims on such terms (e.g. nucleus and nucleoplasm) are the same place, not a movement.
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+PREFIX obo:  <http://purl.obolibrary.org/obo/>
+SELECT DISTINCT ?term ?ancestor
+WHERE {
+  VALUES ?term { %TERMS% }
+  VALUES ?ancestor { %TERMS% }
+  GRAPH <urn:locx:graph:go-cc> { ?term (rdfs:subClassOf|obo:BFO_0000050)+ ?ancestor . }
+}

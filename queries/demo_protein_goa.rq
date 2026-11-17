@@ -1,15 +1,17 @@
-# Demo / Protein explorer: the curated side for one protein (GOA CC rows; ND left out)
+# Demo / Protein pages: the curated side for one protein (GOA CC rows; ND left out), with evidence code,
+#   the database that made the annotation (assignedBy), its date and its reference (PMID or GO_REF)
 PREFIX locx:    <http://example.org/locx/>
 PREFIX prov:    <http://www.w3.org/ns/prov#>
 PREFIX dcterms: <http://purl.org/dc/terms/>
 PREFIX rdfs:    <http://www.w3.org/2000/01/rdf-schema#>
 PREFIX foaf:    <http://xmlns.com/foaf/0.1/>
-SELECT ?term ?label ?qualifier ?negated ?evidence ?source
+SELECT ?term ?label ?qualifier ?negated ?evidence ?source ?assignedBy ?date ?reference
 WHERE {
   GRAPH <urn:locx:graph:goa-human> {
     ?g locx:protein <%PROTEIN%> ; locx:location ?term ; locx:qualifier ?qualifier ;
        locx:negated ?negated ; locx:evidenceCode ?evidence .
-    OPTIONAL { ?g dcterms:source ?source }
+    OPTIONAL { ?g dcterms:source ?source } OPTIONAL { ?g locx:assignedBy ?assignedBy }
+    OPTIONAL { ?g dcterms:date ?date } OPTIONAL { ?g locx:reference ?reference }
   }
   FILTER (?evidence != "ND")
   GRAPH <urn:locx:graph:go-cc> { ?term rdfs:label ?label . }

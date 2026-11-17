@@ -207,3 +207,21 @@ def report(name):
         raise ValueError("bad report name")
     p = REPORTS / f"{name}.json"
     return json.loads(p.read_text()) if p.exists() else None
+
+
+def protein_mentions(acc):
+    return run("demo_protein_mentions.rq", PROTEIN=protein_iri(acc))
+
+
+def protein_authors(acc):
+    return run("demo_protein_authors.rq", PROTEIN=protein_iri(acc))
+
+
+def term_lineage(terms):
+    """(term, ancestor) pairs among the given GO terms (is_a / part_of, any depth)."""
+    terms = sorted(set(terms))
+    if not terms:
+        return [], "", 0.0
+    if not all(GO.match(t) for t in terms):
+        raise ValueError("not a GO term IRI")
+    return run("demo_term_lineage.rq", TERMS=" ".join(f"<{t}>" for t in terms))

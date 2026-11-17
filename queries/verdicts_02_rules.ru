@@ -104,3 +104,16 @@ WHERE {
   GRAPH <urn:locx:graph:verdicts> { ?a locx:goaMatch ?g . }
   FILTER NOT EXISTS { GRAPH <urn:locx:graph:verdicts> { ?a locx:goaExperimental true } }
 }
+ ;
+
+# Evidence group: the strongest GO evidence group among the GOA rows behind the verdict
+#   (experimental > high_throughput > author_statement > curator > computational > electronic; table in locx/evidence.py)
+INSERT { GRAPH <urn:locx:graph:verdicts> { ?a locx:goaEvidence ?evGroup } }
+WHERE {
+  { SELECT ?a (MIN(?evRank) AS ?best) WHERE {
+      GRAPH <urn:locx:graph:verdicts>  { ?a locx:goaMatch ?g . }
+      GRAPH <urn:locx:graph:goa-human> { ?g locx:evidenceCode ?ev . }
+      VALUES (?ev ?evRank) { %EVIDENCE_CODES% }
+    } GROUP BY ?a }
+  VALUES (?evGroup ?best) { %EVIDENCE_GROUPS% }
+}

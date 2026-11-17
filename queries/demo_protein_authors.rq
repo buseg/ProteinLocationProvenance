@@ -1,0 +1,13 @@
+# Demo / Network: authors of the papers behind one protein's valid claims, with their identity keys
+#   (?person = ORCID IRI where Europe PMC gives one; ?key = ASCII last name + first initial, SPEC M8)
+PREFIX locx:    <http://example.org/locx/>
+PREFIX prov:    <http://www.w3.org/ns/prov#>
+PREFIX foaf:    <http://xmlns.com/foaf/0.1/>
+SELECT DISTINCT ?paper ?position ?name ?person ?key
+WHERE {
+  GRAPH <urn:locx:graph:assertions> { ?a locx:protein <%PROTEIN%> . }
+  GRAPH <%RUN_GRAPH%>               { ?m locx:asserts ?a ; locx:valid true ; prov:wasDerivedFrom ?paper . }
+  GRAPH <urn:locx:graph:papers>     { ?paper locx:hasAuthorship ?s . ?s locx:position ?position ; locx:author ?person .
+                                      ?person foaf:name ?name ; locx:authorKey ?key . }
+}
+ORDER BY ?paper ?position

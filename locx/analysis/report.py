@@ -18,6 +18,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 import matplotlib.ticker  # noqa: E402,F401
 
+from locx import evidence  # noqa: E402
 from locx.config import CFG, DATA, INTERIM, QUERIES, REPORTS  # noqa: E402
 from locx.io import read_jsonl  # noqa: E402
 from locx.kg import fuseki  # noqa: E402
@@ -136,6 +137,31 @@ def figures(verdicts, claims, stats_rows, silver):
     return files
 
 
+# --- next steps (SPEC §12, updated with what the expansion-3 run showed) ------------------------------
+NEXT_STEPS = [
+    "**Full-text articles** (open-access PMC / Europe PMC, BioC): GOA curators read full texts, so abstracts cap silver "
+    "recall (ceiling in §6); section-aware chunking (results, figure legends) and longer contexts.",
+    "**Author disambiguation** (OpenAlex author IDs, institutions): the name-key rule (last name + initial, ≥ 2 shared) "
+    "chains unrelated labs through very common keys (e.g. Wang Y, Zhang Y); weight rare names, or require a shared "
+    "ORCID / institution for common ones.",
+    "**Context-aware verdicts**: use the stated condition and cell type (context-dependent count in §5); "
+    "the demo's translocation view (baseline place → place under a condition) is a first, heuristic step.",
+    "**Remaining name errors**: viral and other non-human proteins with human gene symbols (HIV-1 Tat → TAT), and "
+    "triggers credited with the movement they cause (TNF → NF-κB); extend the synonym layer with an organism / "
+    "'not a human protein' reading and a 'who moves' check.",
+    "**Evidence-aware curation suggestions**: rank the upgrade candidates (literature support for GOA rows without "
+    "experimental evidence) and conflicts with weak GOA evidence for curators; export them as nanopublications with "
+    "provenance.",
+    "**Qualifier-aware verdicts**: GOA's 'NOT is_active_in' is not 'NOT located_in' (e.g. nuclear PD-L1); only "
+    "NOT located_in rows should make a conflict, others a softer flag.",
+    "**Validator-in-the-loop repair** (multi-round), and its effect on precision.",
+    "**A second model** (e.g. Qwen3.6-35B-A3B or Gemma 4 E4B) on the same corpus; agreement as a confidence signal.",
+    "**Human Protein Atlas** as a second reference; **orthology mapping** for mouse / rat studies.",
+    "**Abstract-level claims** (protein and location in different sentences), compared with sentence-level claims.",
+    "**Demo speed**: fetch the all-assertions table as TSV and warm the cache on start (first-load times in `reports/demo_check.json`).",
+]
+
+
 # --- worked examples --------------------------------------------------------------------------------
 def worked_examples(run_id, claims, stats, papers, notes):
     run_graph = G["run_prefix"] + run_id
@@ -190,7 +216,9 @@ def worked_examples(run_id, claims, stats, papers, notes):
                     agg[key].add(r["evidence"] + (f" PMID {r['source'].rsplit('/', 1)[-1]}" if r.get("source") else ""))
                 out.append("GOA side: " + "; ".join(
                     f"{'NOT ' if neg else ''}{q} *{lab}* [{', '.join(sorted(evs)[:4])}{' …' if len(evs) > 4 else ''}]"
-                    for (lab, q, neg), evs in sorted(agg.items())))
+                    for (lab, q, neg), evs in sorted(agg.items()))
+                    + (f". Strongest evidence behind the verdict: **{evidence.GROUP_LABEL[s['goa_evidence']]}**"
+                       if s.get("goa_evidence") in evidence.GROUP_LABEL else ""))
             else:
                 g = fuseki.select(q_goa.replace("%PROTEIN%", f"http://purl.uniprot.org/uniprot/{s['uniprot']}"))
                 out.append("GOA side: nothing in this term's lineage; GOA has for this protein: "
@@ -343,9 +371,29 @@ def main():
            f"Supported by a paper that GOA itself cites: {ver['curated_from_same_paper']:,}. "
            f"Novel assertions by independent author groups: "
            + ", ".join(f"{k} group{'s' if k != '1' else ''}: {v}" for k, v in ver["novel_by_n_groups"].items()) + ".",
-           "", "Caveats: the top novel assertions are dominated by PubTator gene-normalization errors on ambiguous symbols "
-           "(e.g. TAZ → TAFAZZIN instead of WWTR1); conflicting is mostly absent-polarity claims (translocation / disease "
-           "context) against GOA nucleus annotations. Author groups are approximate (no disambiguation without ORCID).", ""]
+           ""]
+    eg = ver.get("goa_evidence_group_behind_verdict")
+    if eg:
+        md += ["**Strength of the GOA evidence behind the verdict.** Each GOA row carries a GO evidence code; codes are "
+               "grouped by strength (`locx/evidence.py`) and each assertion is labelled with the strongest group among the "
+               "GOA rows behind its verdict:", ""]
+        md += table(["verdict"] + [evidence.GROUP_LABEL[g] for g, _, _ in evidence.GROUPS],
+                    [[v] + [f"{eg[v].get(g, 0):,}" for g, _, _ in evidence.GROUPS] for v in eg])
+        up = ver["upgrade_candidates"]
+        md += ["", f"**Upgrade candidates:** {sum(up.values()):,} assertions ({up['Consistent']:,} consistent, "
+               f"{up['Refinement']:,} refinement) where papers report a location that GOA has only from an author "
+               "statement, a curator inference, a computational method or an automatic (electronic) annotation; the "
+               "literature could give these annotations experimental support. "
+               f"**Conflicts:** {ver['conflicting_with_experimental_goa']:,} of {ver['verdicts']['Conflicting']:,} "
+               "conflicting assertions contradict a GOA row with experimental evidence; the rest contradict weaker "
+               "evidence, where GOA may be the side to revisit.", ""]
+    md += ["Caveats: the synonym layer (prompt v3) fixes most PubTator normalization errors on ambiguous symbols (TAZ, "
+           "p27, Drp1, COX-2 …; `reports/synonym_stats.md`), but some remain among the top novel assertions: names of "
+           "viral proteins mapped to human genes (HIV-1 Tat → TAT, tyrosine aminotransferase) and a trigger credited "
+           "with the movement it causes (TNF-induced NF-κB nuclear translocation read as TNF in the nucleus). "
+           "Conflicting is mostly absent-polarity claims (translocation / disease context) against GOA nucleus "
+           "annotations. Author groups are approximate (no disambiguation without ORCID; very common name keys can "
+           "chain unrelated labs into one group).", ""]
 
     md += ["## 6. Evaluation", ""]
     L, B = silver["llm"], silver["cooccurrence_baseline"]
@@ -376,6 +424,7 @@ def main():
            "Picked by a fixed rule: valid 'finding' mentions without coreference warnings, strongest support first "
            "(author groups, then papers), three different proteins per verdict. Known errors are noted, not skipped.", ""]
     md += worked_examples(rid, claims, stats, papers, notes)
+    md += ["## 10. Next steps (not built)", ""] + [f"- {x}" for x in NEXT_STEPS] + [""]
     (REPORTS / "progress_stats.md").write_text("\n".join(md) + "\n")
     print(f"[report] reports/progress_stats.md ({len(md)} lines), figures: {', '.join(fig_files)}")
 

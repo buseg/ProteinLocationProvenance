@@ -1,0 +1,20 @@
+# Demo / Cell map, translocations, network: every valid claim about one protein, with its paper, condition and
+#   cell type (%PROTEIN% = UniProt IRI). One row per claim and condition.
+PREFIX locx:    <http://example.org/locx/>
+PREFIX prov:    <http://www.w3.org/ns/prov#>
+PREFIX dcterms: <http://purl.org/dc/terms/>
+SELECT ?a ?term ?polarity ?m ?paper ?year ?title ?citations ?sourceType ?condition ?cellType ?sentence ?group
+WHERE {
+  GRAPH <urn:locx:graph:assertions> { ?a locx:protein <%PROTEIN%> ; locx:location ?term ; locx:polarity ?polarity . }
+  GRAPH <%RUN_GRAPH%> {
+    ?m locx:asserts ?a ; locx:valid true ; prov:wasDerivedFrom ?paper ; locx:sourceType ?sourceType ;
+       locx:sentenceText ?sentence .
+    OPTIONAL { ?m locx:condition ?condition }
+    OPTIONAL { ?m locx:cellType ?cellType }
+  }
+  OPTIONAL { GRAPH <urn:locx:graph:verdicts> { ?m locx:authorGroup ?group } }
+  GRAPH <urn:locx:graph:papers> {
+    ?paper dcterms:title ?title .
+    OPTIONAL { ?paper locx:year ?year } OPTIONAL { ?paper locx:citedByCount ?citations }
+  }
+}

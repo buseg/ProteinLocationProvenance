@@ -17,6 +17,7 @@ import sys
 import time
 from collections import Counter, defaultdict
 
+from locx import evidence
 from locx.analysis.independence import groups
 from locx.config import CFG, DATA, INTERIM, QUERIES, RDF, REPORTS
 from locx.io import read_jsonl
@@ -54,19 +55,22 @@ def main():
 
     # 1. SPARQL verdicts
     for name in ("verdicts_01_goa_links.ru", "verdicts_02_rules.ru"):
-        s = fuseki.run_update_file(QUERIES / name, {"%RUN_GRAPH%": run_graph})
+        s = fuseki.run_update_file(QUERIES / name, {"%RUN_GRAPH%": run_graph,
+                                                     "%EVIDENCE_CODES%": evidence.sparql_code_values(),
+                                                     "%EVIDENCE_GROUPS%": evidence.sparql_group_values()})
         print(f"[verdicts] {name}: {s:.0f} s ({fuseki.count(V)} triples in {V})")
     rows = fuseki.select(f"""PREFIX locx: <{LOCX}>
-        SELECT ?a ?v ?ctx ?weak ?exp WHERE {{ GRAPH <{V}> {{ ?a locx:verdict ?v
+        SELECT ?a ?v ?ctx ?weak ?exp ?evg WHERE {{ GRAPH <{V}> {{ ?a locx:verdict ?v
           OPTIONAL {{ ?a locx:contextDependent ?ctx }} OPTIONAL {{ ?a locx:weakGoaMatch ?weak }}
-          OPTIONAL {{ ?a locx:goaExperimental ?exp }} }} }}""")
+          OPTIONAL {{ ?a locx:goaExperimental ?exp }} OPTIONAL {{ ?a locx:goaEvidence ?evg }} }} }}""")
     verdict = {}
     for r in rows:
         k = r["a"].rsplit("/", 1)[-1]
         if k in verdict:
             sys.exit(f"[verdicts] assertion {k} got two verdicts")
         verdict[k] = {"verdict": r["v"].rsplit("/", 1)[-1], "context": r.get("ctx") == "true",
-                      "weak": r.get("weak") == "true", "goa_experimental": None if "exp" not in r else r["exp"] == "true"}
+                      "weak": r.get("weak") == "true", "goa_experimental": None if "exp" not in r else r["exp"] == "true",
+                      "goa_evidence": r.get("evg", "")}
     goa_src = defaultdict(set)   # assertion -> PMIDs that GOA cites for P in T's lineage
     for r in fuseki.select(f"""PREFIX locx: <{LOCX}> PREFIX dcterms: <http://purl.org/dc/terms/>
         SELECT ?a ?src WHERE {{ GRAPH <{V}> {{ ?a locx:goaSame|locx:goaNarrower|locx:goaBroader ?g }}
@@ -151,6 +155,16 @@ def main():
            "verdicts_share": {v: round(dist[v] / len(stats), 3) for v in VERDICTS},
            "per_tier": {t: {v: c[v] for v in VERDICTS} for t, c in per_tier.items()},
            "goa_evidence_behind_verdict": {v: dict(c) for v, c in ev.items()},
+           # strongest GO evidence group among the GOA rows behind the verdict (locx/evidence.py)
+           "goa_evidence_group_behind_verdict": {
+               v: {g: sum(1 for s in stats.values() if s["verdict"] == v and s["goa_evidence"] == g)
+                   for g, _, _ in evidence.GROUPS} for v in ("Consistent", "Refinement", "Conflicting")},
+           # literature support for curated locations that have no experimental GOA evidence
+           "upgrade_candidates": {v: sum(1 for s in stats.values() if s["verdict"] == v and s["goa_evidence"]
+                                         and evidence.RANK[s["goa_evidence"]] > evidence.RANK["high_throughput"])
+                                  for v in ("Consistent", "Refinement")},
+           "conflicting_with_experimental_goa": sum(1 for s in stats.values() if s["verdict"] == "Conflicting"
+                                                    and s["goa_evidence"] == "experimental"),
            "context_dependent": sum(s["context"] for s in stats.values()),
            "weak_goa_match_only": sum(s["weak"] for s in stats.values()),
            "curated_from_same_paper": sum(s["curated_from_same_paper"] for s in stats.values()),
@@ -161,7 +175,7 @@ def main():
     (REPORTS / "verdicts.json").write_text(json.dumps(out, indent=2))
     cols = ["symbol", "location", "go_id", "polarity", "verdict", "n_papers", "n_groups", "n_papers_finding",
             "n_papers_background", "n_papers_hedged", "n_mentions", "year_first", "year_last", "n_journals",
-            "sum_citations", "n_opposing_papers", "curated_from_same_paper", "context", "weak", "goa_experimental",
+            "sum_citations", "n_opposing_papers", "curated_from_same_paper", "context", "weak", "goa_experimental", "goa_evidence",
             "methods", "organisms", "conditions", "tiers", "uniprot", "pmids", "example_pmid", "example_sentence"]
 
     def write(path, items):
@@ -180,6 +194,9 @@ def main():
     for t, c in per_tier.items():
         print(f"  {t:10s} " + ", ".join(f"{v} {c[v]}" for v in VERDICTS))
     print(f"  GOA evidence behind verdict: {out['goa_evidence_behind_verdict']}")
+    print(f"  strongest GOA evidence group: {out['goa_evidence_group_behind_verdict']}")
+    print(f"  upgrade candidates {out['upgrade_candidates']}, conflicting with experimental GOA "
+          f"{out['conflicting_with_experimental_goa']}")
     print(f"  context-dependent {out['context_dependent']}, weak-only {out['weak_goa_match_only']}, "
           f"curated from same paper {out['curated_from_same_paper']}, novel by n_groups {out['novel_by_n_groups']}")
     print(f"[verdicts] -> reports/verdicts.json, assertion_stats.tsv, top_novel.tsv, top_conflicting.tsv ({out['seconds']} s)")

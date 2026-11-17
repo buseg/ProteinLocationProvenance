@@ -1,12 +1,14 @@
 # Demo / Home and Explore: every assertion with its verdict and support counts (one table, filtered in the app)
 PREFIX locx:    <http://example.org/locx/>
 PREFIX rdfs:    <http://www.w3.org/2000/01/rdf-schema#>
-SELECT ?a ?protein ?symbol ?term ?label ?polarity ?verdict ?nPapers ?nGroups ?nFinding ?yearFirst ?yearLast ?context
+SELECT ?a ?protein ?symbol ?term ?label ?polarity ?verdict ?nPapers ?nGroups ?nFinding ?yearFirst ?yearLast ?context ?evidence ?samePaper
 WHERE {
   GRAPH <urn:locx:graph:verdicts> {
     ?a locx:verdict ?verdict ; locx:nPapers ?nPapers ; locx:nGroups ?nGroups ; locx:nPapersFinding ?nFinding .
     OPTIONAL { ?a locx:yearFirst ?yearFirst ; locx:yearLast ?yearLast }
     OPTIONAL { ?a locx:contextDependent ?context }
+    OPTIONAL { ?a locx:goaEvidence ?evidence }        # strongest GO evidence group behind the verdict
+    OPTIONAL { ?a locx:curatedFromSamePaper ?samePaper }
   }
   GRAPH <urn:locx:graph:assertions>    { ?a locx:protein ?protein ; locx:location ?term ; locx:polarity ?polarity . }
   GRAPH <urn:locx:graph:uniprot-human> { ?protein locx:geneSymbol ?symbol . }
