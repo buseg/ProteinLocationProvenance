@@ -8,6 +8,7 @@ name key in >= 2 of them, SPEC M8), which is why several papers can count as one
 All text from papers is escaped; links are built only from validated PMIDs / ORCID IRIs.
 """
 import html
+import json
 import re
 from collections import defaultdict
 
@@ -107,9 +108,26 @@ def person_html(name, person):
     return esc(name)
 
 
-def fo(x, y, w, h, inner, cls=""):
+def fo(x, y, w, h, inner, cls="", attrs=""):
     return (f"<foreignObject x='{x}' y='{y}' width='{w}' height='{h}'>"
-            f"<div xmlns='http://www.w3.org/1999/xhtml' class='{cls}' style='height:{h}px'>{inner}</div></foreignObject>")
+            f"<div xmlns='http://www.w3.org/1999/xhtml' class='{cls}' style='height:{h}px' {attrs}>{inner}</div></foreignObject>")
+
+
+TAG = re.compile(r"</?(sub|sup|i|b|em|strong)>", re.I)
+PANEL_H = 360
+
+
+def abstract_panel(pmid, rec, sentence, sentence_id):
+    """Escaped HTML for the panel under the graph: the paper's full text with the clicked claim's sentence marked."""
+    links = (f"<a href='{PUBMED}{pmid}/' target='_blank'>PubMed</a> · "
+             f"<a href='https://europepmc.org/article/MED/{pmid}' target='_blank'>Europe PMC</a>")
+    if not rec:
+        return f"<div class='ah'>PMID {esc(pmid)}: no stored text · {links}</div>"
+    text = esc(TAG.sub("", rec["abstract"]))
+    sent = esc(TAG.sub("", sentence or ""))
+    text = text.replace(sent, f"<mark>{sent}</mark>", 1) if sent else text
+    return (f"<div class='ah'><b>{esc(rec.get('title'))}</b> · {esc(rec.get('year', '?'))} · <i>{esc(rec.get('journal', ''))}</i>"
+            f" · PMID {esc(pmid)} · sentence {esc(sentence_id)} highlighted · {links}</div><div class='at'>{text}</div>")
 
 
 def edge(x1, y1, x2, y2, color=LINE, dash=False, width=1.3):
@@ -149,11 +167,21 @@ CSS = f"""
   .colhead {{ font-size:12px; letter-spacing:.04em; text-transform:uppercase; color:{MUTED}; }}
   .pred {{ font: 11px ui-monospace, SFMono-Regular, Menlo, monospace; fill:{MUTED}; }}
   .more {{ font-size:12.5px; color:{INK2}; }}
+  .click {{ cursor:pointer; }}
+  .click.sel {{ border:2px solid {INK}; }}
+  .abs {{ box-sizing:border-box; margin:12px 0 0 0; max-width:1300px; overflow-y:auto; border:1px solid {LINE};
+          border-radius:10px; background:{CARD}; padding:12px 16px; font-size:14px; line-height:1.55; }}
+  .abs .hint {{ color:{MUTED}; }}
+  .abs .ah {{ font-size:13px; color:{INK2}; margin-bottom:8px; }}
+  .abs .ah b {{ color:{INK}; }}
+  .abs a {{ color:{INK}; }}
+  .abs mark {{ background:#ffe08a; padding:0 1px; }}
 </style>"""
 
 
-def build(a, mention_rows, authors, goa_rows, run, max_papers=12, colors=None):
-    """Return (html, height, shown) for the provenance graph of one assertion."""
+def build(a, mention_rows, authors, goa_rows, run, max_papers=12, colors=None, abstract_fn=None):
+    """Return (html, height, shown) for the provenance graph of one assertion. abstract_fn(pmid) -> abstract record
+    (or None); when given, clicking a claim opens its paper's full text under the graph."""
     colors = colors or {}
     mentions = merge_mentions(mention_rows)
     groups = author_groups(mentions, authors)
@@ -172,7 +200,7 @@ def build(a, mention_rows, authors, goa_rows, run, max_papers=12, colors=None):
         n += len(take)
     hidden_papers = sum(len(p) for _, p, _, _ in groups) - n
 
-    parts, edges = [], []
+    parts, edges, panels = [], [], []
     y = TOP
     claim_pos = []                     # (y_center) of claims for the assert edges
     for gi, (g, papers, link, total) in enumerate(shown_groups, 1):
@@ -218,7 +246,13 @@ def build(a, mention_rows, authors, goa_rows, run, max_papers=12, colors=None):
                 inner = (f"<div class='s' title='{esc(m.get('sentence'))}'>{chips}"
                          f"{snippet(m.get('sentence'), m['marks'])}</div><div class='meta'>{esc(m.get('sentenceId'))}"
                          f"{' · ' + esc(meta) if meta else ''}</div>")
-                parts.append(fo(X_CLAIM, cy, W_CLAIM, CLAIM_H, inner, "card claim"))
+                if abstract_fn:
+                    pmid = local(p)
+                    panels.append(abstract_panel(pmid, abstract_fn(pmid), m.get("sentence"), m.get("sentenceId", "")))
+                    parts.append(fo(X_CLAIM, cy, W_CLAIM, CLAIM_H, inner, "card claim click",
+                                    f"data-i='{len(panels) - 1}' title='Click to read the full abstract below'"))
+                else:
+                    parts.append(fo(X_CLAIM, cy, W_CLAIM, CLAIM_H, inner, "card claim"))
                 edges.append(edge(X_CLAIM, cy + CLAIM_H / 2, X_PAPER + W_PAPER - 10, py + h / 2))
                 claim_pos.append(cy + CLAIM_H / 2)
                 cy += CLAIM_H + GAP
@@ -311,8 +345,19 @@ def build(a, mention_rows, authors, goa_rows, run, max_papers=12, colors=None):
             f"<path d='M0,0 L10,5 L0,10 z' fill='{INK2}'/></marker></defs>")
     svg = (f"<div class='wrap'><svg xmlns='http://www.w3.org/2000/svg' width='{W}' height='{height}' "
            f"viewBox='0 0 {W} {height}'>{defs}" + "".join(edges) + "".join(hdr) + "".join(parts) + "</svg></div>")
-    return CSS + svg, height, {"papers_shown": n, "papers_hidden": hidden_papers, "groups": len(groups),
-                               "groups_shown": len(shown_groups)}
+    stats = {"papers_shown": n, "papers_hidden": hidden_papers, "groups": len(groups), "groups_shown": len(shown_groups)}
+    if not panels:
+        return CSS + svg, height, stats
+    data = json.dumps(panels).replace("</", "<\\/")      # HTML strings, escaped above; safe inside <script>
+    panel = (f"<div id='abs' class='abs' style='height:{PANEL_H - 20}px'><div class='hint'>Click a claim above to read "
+             "its paper's full abstract here, with the sentence highlighted.</div></div>"
+             f"<script>const P={data};const abs=document.getElementById('abs');"
+             "document.querySelectorAll('.click').forEach(el=>el.addEventListener('click',()=>{"
+             "document.querySelectorAll('.click.sel').forEach(x=>x.classList.remove('sel'));el.classList.add('sel');"
+             "abs.innerHTML=P[+el.dataset.i];abs.scrollTop=0;"
+             "const mk=abs.querySelector('mark');if(mk){abs.scrollTop=Math.max(0,mk.offsetTop-abs.offsetTop-60);}"
+             "abs.scrollIntoView({block:'nearest'});}));</script>")
+    return CSS + svg + panel, height + PANEL_H, stats
 
 
 def groups_lookup(groups, g):

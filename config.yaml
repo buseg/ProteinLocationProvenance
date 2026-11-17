@@ -10,6 +10,7 @@ graphs:
   papers: urn:locx:graph:papers
   assertions: urn:locx:graph:assertions
   verdicts: urn:locx:graph:verdicts
+  abstracts: urn:locx:graph:abstracts   # text the LLM read (PubTator title + abstract), for the demo (DECISIONS 2026-11-17)
   run_prefix: urn:locx:graph:run/
 llm:
   model: google/gemma-4-31B-it-qat-w4a16-ct

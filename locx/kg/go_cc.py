@@ -116,6 +116,9 @@ def build(obo_path):
                 pairs.append(("locx:nonHumanCompartment", "true"))
             if go_id in too_generic:
                 pairs.append(("locx:tooGeneric", "true"))
+            # GO slim memberships (e.g. goslim_agr), as in GO's own OWL release; the demo groups terms by them
+            pairs += [("oboInOwl:inSubset", f"<http://purl.obolibrary.org/obo/go#{sub}>")
+                      for sub in sorted(d.get("subset", [])) if sub.startswith("goslim_")]
             f.write(block(go_iri(go_id), pairs))
 
     # Dictionary: label + exact + related synonyms + adjective map, minus the stoplist

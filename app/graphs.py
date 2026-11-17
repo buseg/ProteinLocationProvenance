@@ -1,8 +1,8 @@
-"""Protein graph pages of demo v2: Translocations, Network, Timeline.
+"""Protein graph pages of demo v2: Conditions, Network, Timeline (+ the shared abstract popover).
 
 Each page takes a small context object from app/v2.py (cached query runner, colours, protein picker, ...) so this
-module does not import the Streamlit script itself. All locations are the GO terms as claimed (no roll-up to broad
-compartments). All text from the data is escaped before it goes into HTML.
+module does not import the Streamlit script itself. Locations are the GO terms as claimed; the optional grouping uses
+the GO Consortium's goslim_agr. All text from the data is escaped before it goes into HTML.
 """
 import html
 import math
@@ -57,134 +57,153 @@ def verdict_legend(colors, extra=""):
         f"margin-right:5px'></span>{v}</span>" for v in D.VERDICTS[:5]) + extra + "</div>")
 
 
-# --- Translocations page -----------------------------------------------------------------------------
-BASELINE = re.compile(r"\b(basal|baseline|rest(ing)?|unstimulated|non-?stimulated|untreated|control|normal|steady[- ]state|"
-                      r"fed|nutrient[- ]rich|quiescent|physiological|homeostatic|unstressed|wild[- ]type|wt)\b", re.I)
+# --- full abstract ------------------------------------------------------------------------------------
+def abstract_body(ctx, pmid, sentences=()):
+    """The full text the LLM read (abstracts graph) with the claim's sentence(s) highlighted, plus links."""
+    pmid = str(pmid)
+    rows = ctx.cached("abstract", pmid)[0]
+    links = [f"[PubMed]({PUBMED}{pmid}/)", f"[Europe PMC](https://europepmc.org/article/MED/{pmid})"]
+    if rows and rows[0].get("doi"):
+        links.append(f"[DOI](https://doi.org/{rows[0]['doi']})")
+    if not rows:
+        st.write("No text stored for this paper. " + " · ".join(links))
+        return
+    r = rows[0]
+    text = esc(clean(r["abstract"]))
+    for sent in sorted({clean(x) for x in sentences if x}, key=len, reverse=True):
+        text = text.replace(esc(sent), f"<mark>{esc(sent)}</mark>")
+    st.markdown(f"**{esc(r['title'])}** · {esc(r.get('year', '?'))} · *{esc(r.get('journal', ''))}* · PMID {pmid}")
+    st.markdown(f"<div style='max-width:760px;font-size:0.92em;line-height:1.5'>{text}</div>", unsafe_allow_html=True)
+    st.caption("The text the model read (PubTator title + abstract); the claim's sentence is highlighted. "
+               + " · ".join(links))
 
 
-def translocations(mrows, lineage):
-    """Movements between GO terms: (from, to, directed) -> {"papers", "conditions" Counter, "examples"}.
+def abstract_popover(ctx, pmid, sentences=(), key=""):
+    """'Abstract' button that opens abstract_body."""
+    with st.popover("Abstract", type="tertiary", icon=":material/article:", key=f"abs_{key}_{pmid}"):
+        abstract_body(ctx, pmid, sentences)
 
-    A paper counts when it places the protein at one GO term with no condition (or a baseline one: basal, untreated,
-    control, fed ...) and at another term under a stated condition: an arrow from the baseline term to the condition's
-    term. If a paper has only condition-specific terms, two terms under different conditions get an undirected edge.
-    Terms on each other's lineage (nucleus / nucleoplasm, is_a or part_of) are the same place and never form an edge."""
-    same = {(a, b) for a, b in lineage} | {(b, a) for a, b in lineage}
-    per = defaultdict(lambda: {"base": set(), "cond": defaultdict(set), "sent": {}})
+
+# --- Conditions page ---------------------------------------------------------------------------------
+NONE = "no condition stated"
+
+
+def conditions_page(ctx, slim_toggle):
+    acc, opts, pres = ctx.picker("Protein", "condprot")
+    _title(ctx, acc, opts, "locations by condition")
+    st.caption("The protein in the middle; each edge points to a location the papers place it at, labelled with the "
+               "condition the sentence states (treatment, stress, mutation, disease …, as the model wrote it). A plain "
+               "edge = no condition stated. Edge width = papers, colour = verdict of that location; red dashed = the "
+               "papers say NOT there under that condition. Hover an edge for details; pick a row below for the "
+               "sentences and abstracts.")
+    group = slim_toggle()
+    lit, goa, res = _protein_data(ctx, acc)
+    m_res = ctx.cached("protein_mentions", acc)
+    info = {x["term"]: x for x in lit if local(x["polarity"]) == "Present"}
+    info_abs = {x["term"]: x for x in lit if local(x["polarity"]) == "Absent"}
+    label = {x["term"]: x["label"] for x in lit}
+    slim_res = ctx.cached("slims", tuple(sorted(label))) if group else ({}, "", 0.0)
+    places = (lambda t: slim_res[0].get(t) or ["(no slim term)"]) if group else (lambda t: [label.get(t, local(t))])
+    # one claim -> its conditions (or NONE); edges keyed by (place, polarity, condition)
     claims = {}
-    for r in mrows:
-        if local(r["polarity"]) != "Present":
-            continue
+    for r in m_res[0]:
         c = claims.setdefault(r["m"], {**r, "conds": set()})
         if r.get("condition"):
             c["conds"].add(r["condition"])
+    edges = defaultdict(lambda: {"papers": set(), "examples": [], "terms": set()})
     for c in claims.values():
-        p = per[c["paper"]]
-        real = {x for x in c["conds"] if not BASELINE.search(x)}
-        if real:
-            p["cond"][c["term"]] |= real
-            p["sent"][c["term"]] = c["sentence"]
-        else:
-            p["base"].add(c["term"])
-            p["sent"].setdefault(c["term"], c["sentence"])
-        p["year"] = c.get("year")
-    edges = defaultdict(lambda: {"papers": set(), "conditions": Counter(), "examples": []})
-    for paper, p in per.items():
-        found = []
-        for t, conds in p["cond"].items():
-            if any(t == b or (t, b) in same for b in p["base"]):
-                continue             # also at (or within) a baseline place: no movement
-            found += [(s, t, True, conds) for s in p["base"]]
-        if not p["base"]:
-            ts = sorted(p["cond"])
-            for i in range(len(ts)):
-                for j in range(i + 1, len(ts)):
-                    if (ts[i], ts[j]) not in same and p["cond"][ts[i]] != p["cond"][ts[j]]:
-                        found.append((ts[i], ts[j], False, p["cond"][ts[i]] | p["cond"][ts[j]]))
-        for s, t, directed, conds in found:
-            e = edges[(s, t, directed)]
-            if paper not in e["papers"]:
-                e["papers"].add(paper)
-                e["conditions"].update(conds)
-                e["examples"].append({"paper": paper, "year": p.get("year"), "conditions": sorted(conds),
-                                      "from": clean(p["sent"].get(s, "")), "to": clean(p["sent"].get(t, ""))})
-    return edges
-
-
-def translocations_page(ctx):
-    acc, opts, pres = ctx.picker("Protein", "transprot")
-    _title(ctx, acc, opts, "translocations")
-    lit, goa, res = _protein_data(ctx, acc)
-    m_res = ctx.cached("protein_mentions", acc)
-    lin_res = ctx.cached("term_lineage", tuple(sorted({x["term"] for x in lit})))
-    edges = translocations(m_res[0], [(r["term"], r["ancestor"]) for r in lin_res[0]])
-    st.caption("Movements between locations that the papers describe, on the GO terms as stated. A paper counts when it "
-               "places the protein at one location with no condition (or a baseline one: basal, untreated, control, fed …) "
-               "and at another location under a stated condition (treatment, stress, mutation, disease …): the arrow goes "
-               "from the baseline place to the condition's place. Dashed = both places only under different conditions. "
-               "Locations on each other's GO lineage (e.g. nucleus and nucleoplasm) are the same place. Built "
-               "automatically from the claims: a heuristic, not a curated pathway.")
+        pol = local(c["polarity"])
+        for place in places(c["term"]):
+            for cond in (c["conds"] or {NONE}):
+                e = edges[(place, pol, cond)]
+                e["terms"].add(c["term"])
+                if c["paper"] not in e["papers"]:
+                    e["papers"].add(c["paper"])
+                    e["examples"].append(c)
     if not edges:
-        st.info("No paper places this protein at two different locations under different conditions.")
-        ctx.sparql(m_res, lin_res, *res)
+        st.info("No claims for this protein.")
         return
-    ranked = sorted(edges.items(), key=lambda kv: (-len(kv[1]["papers"]), kv[0]))
-    num = {k: i for i, (k, _) in enumerate(ranked, 1)}
-    label = {x["term"]: x["label"] for x in lit}
-    present = {x["term"]: x for x in lit if local(x["polarity"]) == "Present"}
-    c1, c2, _ = st.columns([1.3, 1.3, 2])
-    max_n = max(len(e["papers"]) for _, e in ranked)
-    min_p = c1.slider("Min. papers per arrow", 1, max(2, min(max_n, 20)), 1 if max_n < 5 else 2, key=f"tmin_{acc}")
-    max_e = c2.slider("Max. arrows", 5, 60, 25, key=f"tmax_{acc}")
-    shown = [(k, e) for k, e in ranked if len(e["papers"]) >= min_p][:max_e]
+    per_place = defaultdict(set)
+    for (place, pol, cond), e in edges.items():
+        per_place[place] |= e["papers"]
+    c1, c2, c3 = st.columns(3)
+    n_places = c1.slider("Locations (most papers first)", 1, max(2, len(per_place)), min(10, len(per_place)), key=f"cp_{acc}_{group}")
+    k = c2.slider("Conditions per location (most papers first)", 0, 10, 3, key=f"ck_{acc}")
+    show_none = c3.toggle("Edge for 'no condition stated'", value=True, key=f"cn_{acc}")
+    keep = set(sorted(per_place, key=lambda pl: -len(per_place[pl]))[:n_places])
 
-    net = Network(height="620px", width="100%", directed=True, bgcolor=SURF, cdn_resources="in_line")
-    nodes = {t for (s, t2, _), _ in shown for t in (s, t2)}
-    top = max([int(present[t]["nPapers"]) for t in nodes if t in present] or [1])
-    for t in nodes:
-        x = present.get(t)
-        v = local(x["verdict"]) if x else ""
-        n = int(x["nPapers"]) if x else 0
-        net.add_node(t, label=label.get(t, local(t)), shape="dot", size=10 + 26 * math.sqrt(n / top),
+    def verdict_of(place, pol):
+        src = info if pol == "Present" else info_abs
+        vs = [src[t] for t in src if place in places(t)]
+        return local(max(vs, key=lambda x: int(x["nPapers"]))["verdict"]) if vs else ""
+
+    shown = []
+    for place in keep:
+        for pol in ("Present", "Absent"):
+            items = [(cond, e) for (pl, po, cond), e in edges.items() if pl == place and po == pol]
+            base = [(c, e) for c, e in items if c == NONE]
+            conds = sorted([(c, e) for c, e in items if c != NONE], key=lambda ce: (-len(ce[1]["papers"]), ce[0]))
+            sel = (base if show_none else []) + conds[:k]
+            if pol == "Absent" and not sel and items:
+                sel = sorted(items, key=lambda ce: -len(ce[1]["papers"]))[:1]
+            shown += [(place, pol, c, e) for c, e in sel]
+    net = Network(height="660px", width="100%", directed=True, bgcolor=SURF, cdn_resources="in_line")
+    sym = opts[acc]["symbol"]
+    net.add_node(acc, label=sym, shape="box", color={"background": INK, "border": INK}, font={"color": SURF, "size": 22},
+                 title=f"{sym} ({acc})", mass=4)
+    top = max([len(per_place[pl]) for pl in keep] or [1])
+    for place in keep:
+        v = verdict_of(place, "Present")
+        n = len(per_place[place])
+        net.add_node("place:" + place, label=place, shape="dot", size=10 + 22 * math.sqrt(n / top),
                      color={"background": ctx.COLOR.get(v, EMPTY), "border": INK2},
                      font={"size": 15, "color": INK, "strokeWidth": 4, "strokeColor": SURF},
-                     title=f"{label.get(t, '')} ({local(t).replace('_', ':')})\n"
-                           + (f"{v} · {n} papers · {x['nGroups']} author groups" if x else "no present claim"))
-    for (s, t, directed), e in shown:
+                     title=f"{place}: {n} papers" + (f" · {v}" if v else ""))
+    count = defaultdict(int)
+    for place, pol, cond, e in shown:
+        i = count[place]
+        count[place] += 1
         n = len(e["papers"])
-        net.add_edge(s, t, width=1 + 1.6 * math.log1p(n), color=INK, dashes=not directed, label=str(num[(s, t, directed)]),
-                     arrows={"to": {"enabled": True}, "from": {"enabled": not directed}},
-                     font={"size": 13, "color": INK, "strokeWidth": 5, "strokeColor": SURF, "bold": True},
-                     smooth={"type": "curvedCW", "roundness": 0.15} if directed else {"type": "curvedCCW", "roundness": 0.4},
-                     title=f"#{num[(s, t, directed)]} {label.get(s, '')} {'→' if directed else '↔'} {label.get(t, '')}: "
-                           f"{n} papers\nconditions: " + "; ".join(f"{c} ({k})" for c, k in e["conditions"].most_common(8)))
+        absent = pol == "Absent"
+        col = "#b3261e" if absent else ctx.COLOR.get(verdict_of(place, pol), MUTED)
+        txt = ("NOT · " if absent else "") + ("" if cond == NONE else (cond[:34] + ("…" if len(cond) > 34 else "")))
+        net.add_edge(acc, "place:" + place, width=1 + 1.5 * math.log1p(n), color=col, dashes=absent,
+                     label=(f"{txt} ({n})" if txt else f"({n})") if n >= 2 or len(shown) <= 12 else None,
+                     font={"size": 11, "color": INK2, "strokeWidth": 4, "strokeColor": SURF},
+                     smooth={"type": "curvedCW" if i % 2 else "curvedCCW", "roundness": 0.08 + 0.12 * ((i + 1) // 2)},
+                     title=f"{sym} {'NOT ' if absent else ''}at {place}" + (f" under: {cond}" if cond != NONE else ", no condition stated")
+                           + f"\n{n} papers · GO terms: " + ", ".join(sorted(label.get(t, '') for t in e["terms"])))
     net.set_options(PHYSICS)
-    left, right = st.columns([3, 2])
+    components.html(net.generate_html(notebook=False), height=680)
+    st.markdown(verdict_legend(ctx.COLOR, extra="<span><span style='display:inline-block;width:18px;border-top:2px dashed "
+                                                 "#b3261e;margin-right:5px;vertical-align:middle'></span>NOT under "
+                                                 "this condition</span>"), unsafe_allow_html=True)
+    st.caption(f"{len(keep)} of {len(per_place)} locations, {len(shown)} edges (labels on edges with ≥ 2 papers when "
+               "there are many; hover any edge). Conditions are the model's own words, "
+               "not merged or cleaned yet; a sentence with several conditions adds an edge for each."
+               + (" Grouped by GO slim: a term under several slim terms counts for each." if group else ""))
+    tab = pd.DataFrame([{"location": place, "claim": "NOT" if pol == "Absent" else "present", "condition": cond,
+                         "papers": len(e["papers"])} for (place, pol, cond), e in edges.items() if place in keep]
+                       ).sort_values(["papers", "location"], ascending=[False, True]).reset_index(drop=True)
+    left, right = st.columns([2, 3])
     with left:
-        components.html(net.generate_html(notebook=False), height=640)
-        st.markdown(verdict_legend(ctx.COLOR), unsafe_allow_html=True)
-        st.caption(f"{len(shown)} of {len(edges)} movements shown (most papers first). Node colour = verdict of the "
-                   "protein at that location, size = papers; arrow width = papers; the number is the row in the table. "
-                   "Hover an arrow for its conditions; drag nodes to rearrange.")
-    with right:
-        tab = pd.DataFrame([{"#": num[(s, t, d)], "from": label.get(s, ""), "to": label.get(t, ""),
-                             "kind": "move" if d else "both, different conditions", "papers": len(e["papers"]),
-                             "top conditions": "; ".join(f"{c} ({k})" for c, k in e["conditions"].most_common(4))}
-                            for (s, t, d), e in ranked])
         ev = st.dataframe(tab, hide_index=True, width="stretch", on_select="rerun", selection_mode="single-row",
-                          key=f"trans_{acc}", height=min(38 + 35 * len(tab), 420))
-        pick = ev.selection.rows[0] if ev and ev.selection.rows else 0
-        (s, t, d), e = ranked[pick]
-        st.markdown(f"**#{num[(s, t, d)]} {esc(label.get(s, ''))} {'→' if d else '↔'} {esc(label.get(t, ''))}**: "
-                    f"{len(e['papers'])} papers (select a row for another movement)")
-        for x in sorted(e["examples"], key=lambda x: -(int(x["year"]) if x.get("year") else 0))[:8]:
+                          key=f"cond_{acc}_{group}", height=420)
+        st.caption(f"All {len(tab)} (location, condition) pairs of the locations shown. Select one for its sentences.")
+    with right:
+        r = tab.iloc[ev.selection.rows[0] if ev and ev.selection.rows else 0]
+        e = edges[(r["location"], "Absent" if r["claim"] == "NOT" else "Present", r["condition"])]
+        st.markdown(f"**{esc(sym)} {'NOT ' if r['claim'] == 'NOT' else ''}at {esc(r['location'])}** · "
+                    f"{esc(r['condition'])} · {len(e['papers'])} papers", unsafe_allow_html=True)
+        for i, x in enumerate(sorted(e["examples"], key=lambda x: -(int(x["year"]) if x.get("year") else 0))[:8]):
             pm = local(x["paper"])
-            sents = [x["to"]] if x["to"] == x["from"] or not x["from"] else [x["from"], x["to"]]
-            st.markdown(f"<div style='border-left:3px solid {LINE};padding:2px 0 2px 10px;margin:6px 0;font-size:0.92em'>"
-                        + "<br>".join(esc(z) for z in sents)
-                        + f"<br><small><a href='{PUBMED}{pm}/' target='_blank'>PMID {pm}</a> · {esc(str(x.get('year') or '?'))}"
-                          f" · condition: {esc('; '.join(x['conditions']))}</small></div>", unsafe_allow_html=True)
-    ctx.sparql(m_res, lin_res, *res, pres)
+            st.markdown(f"<div style='border-left:3px solid {LINE};padding:2px 0 2px 10px;margin:6px 0 0;font-size:0.92em'>"
+                        f"{esc(clean(x['sentence']))}<br><small><a href='{PUBMED}{pm}/' target='_blank'>PMID {pm}</a> · "
+                        f"{esc(str(x.get('year') or '?'))} · {esc(label.get(x['term'], ''))}"
+                        + (f" · condition: {esc('; '.join(sorted(x['conds'])))}" if x["conds"] else "")
+                        + "</small></div>", unsafe_allow_html=True)
+            abstract_popover(ctx, pm, [x["sentence"]], key=f"cond{i}")
+    ctx.sparql(m_res, *res, *([slim_res] if group else []), pres)
 
 
 # --- Network page ------------------------------------------------------------------------------------

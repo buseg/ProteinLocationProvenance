@@ -1,0 +1,11 @@
+# Demo / abstract view: the full text the LLM read for one paper (PubTator title + abstract) and its metadata
+#   (%PAPER% = PubMed IRI). The demo highlights the claim's sentence inside it.
+PREFIX locx:    <http://example.org/locx/>
+PREFIX dcterms: <http://purl.org/dc/terms/>
+SELECT ?abstract ?title ?year ?journal ?doi
+WHERE {
+  GRAPH <urn:locx:graph:abstracts> { <%PAPER%> dcterms:abstract ?abstract . }
+  GRAPH <urn:locx:graph:papers>    { <%PAPER%> dcterms:title ?title .
+                                     OPTIONAL { <%PAPER%> locx:year ?year } OPTIONAL { <%PAPER%> locx:journal ?journal }
+                                     OPTIONAL { <%PAPER%> locx:doi ?doi } }
+}

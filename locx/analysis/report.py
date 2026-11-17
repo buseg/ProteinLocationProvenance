@@ -406,12 +406,20 @@ def main():
         ["co-occurrence baseline", pct(B["recall_exact"]), pct(B["recall_hierarchical"]), f"{B['pairs']:,}",
          f"{pct(B['goa_agreement_exact'])} / {pct(B['goa_agreement_hierarchical'])}"]])
     pa = prec["all"]
-    md += ["", f"Precision (manual, judged by {', '.join(prec['judges'])}; rubric `reports/precision_rubric.md`): "
-           f"**{pa['correct']}/{pa['n']} = {pct(pa['precision'])}** (95% Wilson {pct(pa['wilson95'][0])}–{pct(pa['wilson95'][1])}); "
-           f"discovery {pct(prec['discovery']['precision'])}, silver {pct(prec['silver']['precision'])}. Errors: "
-           + ", ".join(f"{k} {v}" for k, v in prec["error_types"].items())
-           + ". The sample was drawn from the MVP run (same model and prompt; those answers are reused unchanged in the "
-           "expanded run). The judge is an LLM that also helped design the pipeline, not an independent annotator.",
+    sj = prec.get("second_judge")
+    mvp = J("precision_mvp/precision.json") if (REPORTS / "precision_mvp" / "precision.json").exists() else None
+    bv = prec.get("by_verdict", {})
+    md += ["", f"Precision (judged by {', '.join(prec['judges'])}; rubric `reports/precision_rubric.md`; random valid "
+           f"claims of run `{rid}`, stratified by tier): **{pa['correct']}/{pa['n']} = {pct(pa['precision'])}** "
+           f"(95% Wilson {pct(pa['wilson95'][0])}–{pct(pa['wilson95'][1])}); discovery {pct(prec['discovery']['precision'])} "
+           f"(n = {prec['discovery']['n']}), silver {pct(prec['silver']['precision'])} (n = {prec['silver']['n']}). "
+           "By verdict: " + ", ".join(f"{v} {x['correct']}/{x['n']}" for v, x in bv.items()) + ". Errors: "
+           + ", ".join(f"{k} {v}" for k, v in prec["error_types"].items()) + "."
+           + (f" A second judge re-judged a random {sj['n']} blind: agreement {pct(sj['agreement'])}, Cohen's kappa "
+              f"{sj['cohen_kappa']:.2f}." if sj else "")
+           + (f" (MVP sheet, {mvp['all']['n']} claims: {pct(mvp['all']['precision'])}, `reports/precision_mvp/`.)" if mvp else "")
+           + " All judges are the same LLM family that helped design the pipeline, not independent human annotators; "
+           "mouse / rat studies of a protein's human counterpart count as correct (organism is not judged).",
            "", f"*{silver['caveat']}*", ""]
 
     md += ["## 7. Runs and GPU hours", ""]

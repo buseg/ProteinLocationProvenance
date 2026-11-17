@@ -1,7 +1,7 @@
 """locx demo v2: where are human proteins in the cell, and how do we know?
 
 Pages around one question: Home (pipeline funnel + highlights); per protein: Profile (literature and the curated
-side in one table, evidence inline), Translocations, Network, Timeline (app/graphs.py) and Provenance
+side in one table, evidence inline), Conditions, Network, Timeline (app/graphs.py) and Provenance
 (author groups → papers → claims → assertion → GOA, with the extraction run); Explore (filter every assertion);
 Quality. GOA evidence codes are grouped by strength everywhere (locx/evidence.py, app/evidence_ui.py).
 Live SPARQL against Fuseki; every query is in queries/ and shown with the sidebar toggle.
@@ -244,6 +244,21 @@ def home():
 
 
 # --- Protein -----------------------------------------------------------------------------------------
+NO_SLIM = "(no slim term)"
+
+
+def slim_toggle():
+    """Shared toggle: show GO terms as stated (default) or grouped by the GO Consortium's goslim_agr."""
+    return st.toggle("Group by GO slim (goslim_agr)", key="group_slim",
+                     help="Locations are the GO terms as the papers state them. On: also show the GO slim terms above "
+                          "each one (goslim_agr, the GO Consortium's 16-term subset for human and model organisms; "
+                          "a term can belong to several).")
+
+
+def slim_text(slim, term):
+    return ", ".join(slim.get(term, [])) or NO_SLIM
+
+
 def ev_text(codes):
     """'Experimental (IDA, IPI); Electronic (IEA)': evidence groups, strongest first, with their codes."""
     return "; ".join(f"{EV.LABEL.get(g, g)} ({', '.join(c)})" for g, c in EV.groups_of(codes).items())
@@ -269,7 +284,9 @@ def protein_page():
     yr_res = cached("protein_years", acc)
     lit, goa = lit_res[0], goa_res[0]
     curated = goa_summary(goa)
-    comp, cq, cs = cached("compartments", tuple(sorted({x["term"] for x in lit} | set(curated))))
+    group = slim_toggle()
+    slim_res = cached("slims", tuple(sorted({x["term"] for x in lit} | set(curated)))) if group else ({}, "", 0.0)
+    slim = slim_res[0]
     years = defaultdict(dict)
     for r in yr_res[0]:
         years[D.local(r["a"])][int(r["year"])] = int(r["papers"])
@@ -289,12 +306,11 @@ def protein_page():
         col.metric(v, vc.get(v, 0), help=VERDICT_HELP[v], border=True)
     m[5].metric("GOA only", len(goa_only), help=VERDICT_HELP["GOA only"], border=True)
 
-    order = {name: i for i, (_, name) in enumerate(D.COMPARTMENTS)}
     rows = []
     for x in lit:
         k = D.local(x["a"])
         cd = curated.get(x["term"])
-        rows.append({"key": k, "compartment": comp.get(x["term"], "other"), "location": x["label"],
+        rows.append({"key": k, "GO slim": slim_text(slim, x["term"]), "location": x["label"],
                      "claim": "present" if vname(x["polarity"]) == "Present" else "NOT (absent)",
                      "verdict": vname(x["verdict"]), "papers": int(x["nPapers"]), "groups": int(x["nGroups"]),
                      "timeline": [years[k].get(y, 0) for y in range(y0, y1 + 1)],
@@ -303,7 +319,7 @@ def protein_page():
                      "condition": "yes" if x.get("context") == "true" else ""})
     for t in goa_only:
         cd = curated[t]
-        rows.append({"key": "", "compartment": comp.get(t, "other"), "location": cd["label"], "claim": "",
+        rows.append({"key": "", "GO slim": slim_text(slim, t), "location": cd["label"], "claim": "",
                      "verdict": "GOA only", "papers": 0, "groups": 0, "timeline": [0] * (y1 - y0 + 1),
                      "GOA evidence": EV.LABEL.get(next(iter(EV.groups_of(cd["ev"])), ""), ""),
                      "GOA (same term)": ev_text(cd["ev"]), "condition": ""})
@@ -311,11 +327,17 @@ def protein_page():
         st.info("No assertions or GOA annotations for this protein.")
         return
     df = pd.DataFrame(rows)
-    df["_o"] = df["compartment"].map(lambda c: order.get(c, 99))
-    df = df.sort_values(["_o", "papers"], ascending=[True, False]).drop(columns="_o").reset_index(drop=True)
+    if group:
+        df["_none"] = df["GO slim"].eq(NO_SLIM)
+        df = df.sort_values(["_none", "GO slim", "papers"], ascending=[True, True, False]).drop(columns="_none")
+    else:
+        df = df.drop(columns="GO slim")
+        df["_goa"] = df["verdict"].eq("GOA only")
+        df = df.sort_values(["_goa", "papers"], ascending=[True, False]).drop(columns="_goa")
+    df = df.reset_index(drop=True)
 
-    st.markdown("**Localization profile**: literature and curators side by side, grouped by compartment. "
-                "Select a row to see the evidence.")
+    st.markdown("**Localization profile**: literature and curators side by side, one row per GO term as stated"
+                + (", grouped by GO slim" if group else "") + ". Select a row to see the evidence.")
     styled = df.drop(columns=["key"]).style.map(
         lambda v: f"background-color: {COLOR.get(v, '#ffffff')}33" if v in COLOR else "", subset=["verdict"])
     ev = st.dataframe(styled, hide_index=True, width="stretch", on_select="rerun", selection_mode="single-row",
@@ -349,7 +371,7 @@ def protein_page():
         evidence_panel(key, acc)
     elif sel:
         st.info("This location is curated in GOA but no abstract in our corpus states it.")
-    sparql(lit_res, goa_res, yr_res, (comp, cq, cs), pres)
+    sparql(lit_res, goa_res, yr_res, *([slim_res] if group else []), pres)
 
 
 def evidence_panel(key, acc):
@@ -416,6 +438,7 @@ def evidence_panel(key, acc):
                         f"{mark(m['sentence'], m['marks'])}<br><small><a href='{PUBMED}{pmid}/' target='_blank'>PMID {pmid}</a>"
                         f" · {html.escape(m.get('year', '?'))} · <i>{html.escape((m.get('journal') or '')[:60])}</i> · "
                         f"{html.escape(' · '.join(meta))}</small></div>", unsafe_allow_html=True)
+                G.abstract_popover(CTX, pmid, [x["sentence"] for x in by_paper[pp]], key=f"ev_{key}")
         n_papers = sum(len(pp) for _, pp, _, _ in groups)
         if shown < n_papers and st.button(f"Show more ({n_papers - shown} more papers)", key=f"morebtn_{key}"):
             st.session_state[f"more_{key}"] = limit + 20
@@ -455,8 +478,8 @@ def provenance_page():
     st.title("Provenance of an assertion")
     st.caption("How one assertion is built from the RDF: papers (boxed by independent author group) → the claims "
                "extracted from their sentences → the merged assertion → the GOA rows it was compared with. Every claim "
-               "was generated by the extraction run shown on top (PROV-O). Hover a claim for the full sentence; "
-               "PMIDs and ORCID iDs are links.")
+               "was generated by the extraction run shown on top (PROV-O). Click a claim to read its paper's full abstract "
+               "under the graph, with the sentence highlighted; PMIDs and ORCID iDs are links.")
     c1, c2, c3 = st.columns([2, 3, 1.2])
     with c1:
         acc, opts, _ = protein_picker("Protein", "provprot")
@@ -479,7 +502,8 @@ def provenance_page():
     au = cached("provenance_authors", key)
     goa = cached("provenance_goa", key)
     run = cached("run_info")
-    html_, height, stats = P.build(info[0][0], ms[0], au[0], goa[0], run[0][0] if run[0] else None, n, COLOR)
+    html_, height, stats = P.build(info[0][0], ms[0], au[0], goa[0], run[0][0] if run[0] else None, n, COLOR,
+                                   abstract_fn=lambda pm: (cached("abstract", pm)[0] or [None])[0])
     st.caption(f"Showing {stats['papers_shown']} of {stats['papers_shown'] + stats['papers_hidden']} papers in "
                f"{stats['groups_shown']} of {stats['groups']} author groups (largest groups first). Two papers are in one "
                "group when they share an ORCID or at least two author names (last name + first initial); common names "
@@ -605,27 +629,6 @@ def quality():
                        f"The co-occurrence baseline pairs every protein with every location in a sentence: similar recall, but only "
                        f"{silver['cooccurrence_baseline']['goa_agreement_hierarchical']:.0%} of its pairs agree with GOA "
                        f"vs {silver['llm']['goa_agreement_hierarchical']:.0%} for the LLM. {silver['caveat']}")
-        vj = D.report("verdicts")
-        if vj and vj.get("goa_evidence_group_behind_verdict"):
-            st.markdown("**How strong is the GOA evidence behind each verdict?**")
-            evd = pd.DataFrame([{"verdict": v, "evidence": EV.LABEL[g], "order": i, "assertions": n}
-                                for v, gs in vj["goa_evidence_group_behind_verdict"].items()
-                                for i, (g, n) in enumerate((g, gs.get(g, 0)) for g in EV.GROUPS) if n])
-            st.altair_chart(alt.Chart(evd).mark_bar(height=22, stroke="#fcfcfb", strokeWidth=2).encode(
-                x=alt.X("assertions:Q", stack="normalize", axis=alt.Axis(format="%"), title=None),
-                y=alt.Y("verdict:N", sort=["Consistent", "Refinement", "Conflicting"], title=None),
-                color=alt.Color("evidence:N", scale=alt.Scale(domain=[EV.LABEL[g] for g in EV.GROUPS],
-                                                             range=[EV.EV_COLOR[g] for g in EV.GROUPS]),
-                                legend=alt.Legend(orient="bottom", title=None, columns=3)),
-                order=alt.Order("order:Q"),
-                tooltip=["verdict", "evidence", alt.Tooltip("assertions:Q", format=",")]).properties(height=120),
-                width="stretch")
-            up = vj.get("upgrade_candidates", {})
-            st.caption(f"Strongest evidence group among the GOA rows behind the verdict. "
-                       f"{sum(up.values()):,} Consistent/Refinement assertions have no experimental GOA evidence "
-                       f"(literature could upgrade them); {vj.get('conflicting_with_experimental_goa', 0):,} of "
-                       f"{vj['verdicts']['Conflicting']:,} conflicts are with experimental GOA. In "
-                       f"{vj.get('curated_from_same_paper', 0):,} assertions GOA cites one of the supporting papers.")
         if prec:
             st.markdown("**What the wrong ones got wrong** (manual check)")
             st.dataframe(pd.DataFrame([{"error": k.replace("_", " "), "assertions": v} for k, v in prec["error_types"].items()]),
@@ -651,14 +654,54 @@ def quality():
             st.caption(f"{syn['abstracts_with_alternative_readings']:,} abstracts contain a name that can mean several "
                        f"proteins; on {syn['claims_on_ambiguous_names']:,} claims the model chose another protein than "
                        f"the tagger's in {syn['share_alternative']:.0%}.")
+    vj = D.report("verdicts")
+    if vj and vj.get("goa_evidence_group_behind_verdict"):
+        st.markdown("**How strong is the GOA evidence behind each verdict?**")
+        NOGOA = "no GOA row behind the verdict"
+        role = {"Consistent": "Consistent · agrees", "Refinement": "Refinement · agrees, paper more specific",
+                "Conflicting": "Conflicting · disagrees", "Novel": "Novel · nothing in GOA",
+                "Uninformative": "Uninformative · too generic"}
+        gb = vj["goa_evidence_group_behind_verdict"]
+        evd = []
+        for v in role:
+            tot = vj["verdicts"].get(v, 0)
+            if not tot:
+                continue
+            counts = [(EV.LABEL[g], gb.get(v, {}).get(g, 0)) for g in EV.GROUPS]
+            counts.append((NOGOA, tot - sum(n for _, n in counts)))
+            for i, (lab, n) in enumerate(counts):
+                if n:
+                    evd.append({"verdict": role[v], "evidence": lab, "order": i, "assertions": n, "share": n / tot,
+                                "text": f"{n / tot:.0%}" if n / tot >= 0.07 else ""})
+        evd = pd.DataFrame(evd)
+        dom = [EV.LABEL[g] for g in EV.GROUPS] + [NOGOA]
+        rng_ = [EV.EV_COLOR[g] for g in EV.GROUPS] + ["#ebe8df"]
+        y = alt.Y("verdict:N", sort=[role[v] for v in role], title=None, axis=alt.Axis(labelLimit=280, labelFontSize=12))
+        bars = alt.Chart(evd).mark_bar(height={"band": 0.7}, stroke="#fcfcfb", strokeWidth=2).encode(
+            x=alt.X("assertions:Q", stack="normalize", axis=alt.Axis(format="%", title=None)),
+            y=y, color=alt.Color("evidence:N", scale=alt.Scale(domain=dom, range=rng_),
+                                 legend=alt.Legend(orient="bottom", title=None, columns=4, labelLimit=260)),
+            order=alt.Order("order:Q"),
+            tooltip=["verdict", "evidence", alt.Tooltip("assertions:Q", format=","),
+                     alt.Tooltip("share:Q", format=".1%", title="share of the verdict")])
+        st.altair_chart(bars.properties(height={"step": 40}), width="stretch")
+        st.caption("Each bar = one verdict; segments = the strongest GOA evidence among the GOA rows behind it (dark = "
+                   "experimental … light = electronic); hover for counts and shares. Novel and Uninformative have no GOA row behind "
+                   "them by definition.")
+        up = vj.get("upgrade_candidates", {})
+        st.caption(f"Strongest evidence group among the GOA rows behind the verdict. "
+                   f"{sum(up.values()):,} Consistent/Refinement assertions have no experimental GOA evidence "
+                   f"(literature could upgrade them); {vj.get('conflicting_with_experimental_goa', 0):,} of "
+                   f"{vj['verdicts']['Conflicting']:,} conflicts are with experimental GOA. In "
+                   f"{vj.get('curated_from_same_paper', 0):,} assertions GOA cites one of the supporting papers.")
     sparql(flags)
 
 
 CTX = SimpleNamespace(cached=cached, COLOR=COLOR, picker=protein_picker, sparql=sparql, assertions=assertions_df)
 
 
-def translocations():
-    G.translocations_page(CTX)
+def conditions():
+    G.conditions_page(CTX, slim_toggle)
 
 
 def network():
@@ -672,14 +715,14 @@ def timeline():
 PAGES = {
     "home": st.Page(home, title="Home", default=True),
     "protein": st.Page(protein_page, title="Profile", url_path="protein"),
-    "translocations": st.Page(translocations, title="Translocations", url_path="translocations"),
+    "conditions": st.Page(conditions, title="Conditions", url_path="conditions"),
     "network": st.Page(network, title="Network", url_path="network"),
     "timeline": st.Page(timeline, title="Timeline", url_path="timeline"),
     "provenance": st.Page(provenance_page, title="Provenance", url_path="provenance"),
     "explore": st.Page(explore, title="Explore", url_path="explore"),
     "quality": st.Page(quality, title="Quality", url_path="quality"),
 }
-SECTIONS = {"": ["home"], "Protein": ["protein", "translocations", "network", "timeline", "provenance"],
+SECTIONS = {"": ["home"], "Protein": ["protein", "conditions", "network", "timeline", "provenance"],
             "All assertions": ["explore", "quality"]}
 if "_test_page" in st.session_state:   # used by app/check_demo.py (AppTest cannot switch to function pages)
     sidebar()

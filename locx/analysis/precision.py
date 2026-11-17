@@ -3,7 +3,8 @@
   python -m locx.analysis.precision sample [--run-id ID]   # reports/precision_sample.csv + precision_review.md
   python -m locx.analysis.precision score                  # precision with a 95% Wilson interval
 
-The sample: 60 random valid claims, stratified 40 discovery / 20 silver (seed from config). The
+The sample: random valid claims, stratified discovery / silver (default 200 / 100; the MVP sheet had 40 / 20,
+kept in reports/precision_mvp/; seed from config). The
 review file shows each claim with its full abstract, for the judge (rubric: reports/precision_rubric.md).
 `sample` refuses to overwrite a sheet that already has judgements.
 """
@@ -34,7 +35,7 @@ def wilson(k, n, z=1.96):
     return (round(c - h, 3), round(c + h, 3))
 
 
-def sample(run_id):
+def sample(run_id, n_disc=200, n_silv=100):
     if SHEET.exists() and any(r["correct"].strip() for r in csv.DictReader(open(SHEET))):
         sys.exit(f"[precision] {SHEET} already has judgements; not overwriting")
     claims = [c for c in read_jsonl(RUNS / run_id / "claims_final.jsonl") if c["valid"]]
@@ -45,7 +46,7 @@ def sample(run_id):
     rng = random.Random(CFG["corpus"]["seed"])
     disc = [c for c in claims if "discovery" in c["tiers"] and "silver" not in c["tiers"]]
     silv = [c for c in claims if "silver" in c["tiers"]]
-    pick = [("discovery", c) for c in rng.sample(disc, 40)] + [("silver", c) for c in rng.sample(silv, 20)]
+    pick = [("discovery", c) for c in rng.sample(disc, n_disc)] + [("silver", c) for c in rng.sample(silv, n_silv)]
     rng.shuffle(pick)   # judge in mixed order, not tier by tier
     cands = {r["pmid"]: r for r in read_jsonl(INTERIM / "candidates.jsonl")}
     rows, md = [], ["# Precision review sheet", "", "Rubric: `reports/precision_rubric.md`. Verdicts are hidden here.", ""]
@@ -73,7 +74,7 @@ def sample(run_id):
         w.writeheader()
         w.writerows(rows)
     (REPORTS / "precision_review.md").write_text("\n".join(md))
-    print(f"[precision] {len(rows)} claims (40 discovery, 20 silver) -> {SHEET.name}, precision_review.md")
+    print(f"[precision] {len(rows)} claims ({n_disc} discovery, {n_silv} silver) -> {SHEET.name}, precision_review.md")
 
 
 def score():
@@ -97,6 +98,19 @@ def score():
         v[0] += r["correct"].strip() == "1"
         v[1] += 1
     out["by_verdict"] = {v: {"correct": a, "n": b} for v, (a, b) in sorted(by_verdict.items())}
+    second = REPORTS / "precision_second_judge.csv"   # a second judge on a random subset (agreement check)
+    if second.exists():
+        first = {r["claim_id"]: r["correct"].strip() for r in judged}
+        pairs = [(first[r["claim_id"]], r["correct"].strip()) for r in csv.DictReader(open(second))
+                 if r["claim_id"] in first and r["correct"].strip() in ("0", "1")]
+        if pairs:
+            po = sum(x == y for x, y in pairs) / len(pairs)
+            p1 = sum(x == "1" for x, _ in pairs) / len(pairs)
+            p2 = sum(y == "1" for _, y in pairs) / len(pairs)
+            pe = p1 * p2 + (1 - p1) * (1 - p2)
+            out["second_judge"] = {"n": len(pairs), "agreement": round(po, 3),
+                                   "cohen_kappa": round((po - pe) / (1 - pe), 3) if pe < 1 else None,
+                                   "judge": "Claude Opus 5.5 (main session), blind to the first judgement"}
     (REPORTS / "precision.json").write_text(json.dumps(out, indent=2))
     a = out["all"]
     print(f"[precision] {a['correct']}/{a['n']} correct = {a['precision']:.1%} (95% Wilson {a['wilson95']}) | "
@@ -108,8 +122,10 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("step", choices=["sample", "score"])
     ap.add_argument("--run-id", default=CFG["extract"]["main_run"])
+    ap.add_argument("--n-discovery", type=int, default=200)
+    ap.add_argument("--n-silver", type=int, default=100)
     a = ap.parse_args()
-    sample(a.run_id) if a.step == "sample" else score()
+    sample(a.run_id, a.n_discovery, a.n_silver) if a.step == "sample" else score()
 
 
 if __name__ == "__main__":

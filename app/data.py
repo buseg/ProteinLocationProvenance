@@ -148,17 +148,6 @@ def manifest_sizes():
 
 
 # --- v2 demo (Home / Protein / Provenance / Explore / Quality) ----------------------------------------
-# Coarse compartments for the protein profile, most specific first; each GO ID is checked against its label
-# (returned by the query) before use, so a wrong ID fails loudly instead of mislabelling rows.
-COMPARTMENTS = [("GO_0005739", "mitochondrion"), ("GO_0005634", "nucleus"), ("GO_0005694", "chromosome"),
-                ("GO_0005783", "endoplasmic reticulum"), ("GO_0005794", "Golgi apparatus"), ("GO_0005768", "endosome"),
-                ("GO_0005764", "lysosome"), ("GO_0005777", "peroxisome"), ("GO_0005856", "cytoskeleton"),
-                ("GO_0031982", "vesicle"), ("GO_0030054", "cell junction"), ("GO_0042995", "cell projection"),
-                ("GO_0005886", "plasma membrane"), ("GO_0005576", "extracellular region"), ("GO_0005829", "cytosol"),
-                ("GO_0005737", "cytoplasm"), ("GO_0016020", "membrane")]
-OBO = "http://purl.obolibrary.org/obo/"
-
-
 def assertions_all():
     return run("demo_assertions_all.rq")
 
@@ -167,24 +156,18 @@ def corpus_size():
     return run("demo_corpus_size.rq")
 
 
-def compartments(terms):
-    """{GO IRI: compartment label} (first matching compartment in COMPARTMENTS order; 'other' if none)."""
+def slims(terms):
+    """{GO IRI: sorted goslim_agr labels above it} (empty list = no slim term above it)."""
     terms = sorted(set(terms))
     if not terms:
         return {}, "", 0.0
     if not all(GO.match(t) for t in terms):
         raise ValueError("not a GO term IRI")
-    rows, q, s = run("demo_compartments.rq", TERMS=" ".join(f"<{t}>" for t in terms),
-                     BUCKETS=" ".join(f"<{OBO}{g}>" for g, _ in COMPARTMENTS))
-    expected = {OBO + g: label for g, label in COMPARTMENTS}
-    rank = {OBO + g: i for i, (g, _) in enumerate(COMPARTMENTS)}
-    best = {}
+    rows, q, s = run("demo_slims.rq", TERMS=" ".join(f"<{t}>" for t in terms))
+    out = {t: [] for t in terms}
     for r in rows:
-        if r["bucketLabel"] != expected[r["bucket"]]:
-            raise ValueError(f"compartment {r['bucket']} has label {r['bucketLabel']!r}, expected {expected[r['bucket']]!r}")
-        if r["term"] not in best or rank[r["bucket"]] < rank[best[r["term"]]]:
-            best[r["term"]] = r["bucket"]
-    return {t: expected[best[t]] if t in best else "other" for t in terms}, q, s
+        out[r["term"]].append(r["slimLabel"])
+    return {t: sorted(set(v)) for t, v in out.items()}, q, s
 
 
 def protein_years(acc):
@@ -217,11 +200,11 @@ def protein_authors(acc):
     return run("demo_protein_authors.rq", PROTEIN=protein_iri(acc))
 
 
-def term_lineage(terms):
-    """(term, ancestor) pairs among the given GO terms (is_a / part_of, any depth)."""
-    terms = sorted(set(terms))
-    if not terms:
-        return [], "", 0.0
-    if not all(GO.match(t) for t in terms):
-        raise ValueError("not a GO term IRI")
-    return run("demo_term_lineage.rq", TERMS=" ".join(f"<{t}>" for t in terms))
+PMID = re.compile(r"^\d{1,9}$")
+
+
+def abstract(pmid):
+    """Full text the LLM read for one paper (abstracts graph)."""
+    if not PMID.match(str(pmid)):
+        raise ValueError(f"not a PMID: {pmid!r}")
+    return run("demo_abstract.rq", PAPER=f"https://pubmed.ncbi.nlm.nih.gov/{pmid}")

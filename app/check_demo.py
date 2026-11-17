@@ -73,10 +73,11 @@ def main():
         D.protein_literature(acc)
         D.protein_goa(acc)
         D.protein_years(acc)
-        D.compartments(tuple(sorted({x["term"] for x in lit} | {g["term"] for g in D.protein_goa(acc)[0]})))
+        D.slims(tuple(sorted({x["term"] for x in lit} | {g["term"] for g in D.protein_goa(acc)[0]})))
         v2s[f"protein({sym})"] = round(time.time() - t, 2)
-        v2s[f"translocations+timeline({sym})"] = timed([lambda: D.protein_mentions(acc), lambda: D.protein_years(acc),
-                                                        lambda: D.term_lineage(tuple(sorted({x["term"] for x in lit})))])
+        v2s[f"conditions+timeline({sym})"] = timed([lambda: D.protein_mentions(acc), lambda: D.protein_years(acc),
+                                                    lambda: D.slims(tuple(sorted({x["term"] for x in lit})))])
+        v2s[f"abstract({sym})"] = timed([lambda: D.abstract(D.local(D.assertion_mentions(D.local(lit[0]["a"]))[0][0]["paper"]))])
         v2s[f"network+papers({sym})"] = timed([lambda: D.protein_mentions(acc), lambda: D.protein_authors(acc),
                                                lambda: D.go_parents(tuple(sorted({x["term"] for x in lit})))])
         v2s[f"evidence+provenance({sym}, max)"] = max(
@@ -91,14 +92,16 @@ def main():
     for page, state in [("home", {}), ("protein_page", {"protein": prot["TP53"]}),
                         ("protein_page", {"protein": prot["TP53"], "assertion": first_key}),
                         ("provenance_page", {"protein": prot["TP53"], "assertion": first_key}),
-                        ("translocations", {"protein": prot["TFEB"]}),
+                        ("conditions", {"protein": prot["TFEB"]}), ("conditions", {"protein": prot["TP53"], "group_slim": True}),
+                        ("protein_page", {"protein": prot["TP53"], "group_slim": True}),
                         ("network", {"protein": prot["TP53"]}), ("timeline", {"protein": prot["TFEB"]}),
                         ("explore", {}), ("quality", {})]:
         at = AppTest.from_file(app2, default_timeout=120)
         for k, v in {**state, "_test_page": page}.items():
             at.session_state[k] = v
         at.run()
-        v2r[page + ("+assertion" if "assertion" in state and page == "protein_page" else "")] = {
+        v2r[page + ("+assertion" if "assertion" in state and page == "protein_page" else "")
+            + ("+slim" if state.get("group_slim") else "")] = {
             "exceptions": [str(e.value) for e in at.exception]}
     out["v2"] = {"pages_seconds": v2s, "headless": v2r, "worst_page_seconds": max(v2s.values())}
     worst = max(list(out["pages_seconds"].values()) + [v["explorer_seconds"] for v in out["proteins"].values()]

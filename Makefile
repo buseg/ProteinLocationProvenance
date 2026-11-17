@@ -3,7 +3,7 @@ SHELL := /bin/bash
 MM    ?= $(HOME)/.local/bin/micromamba
 GPU   := $(shell sed -n 's/^ *gpu: *\([0-9]*\).*/\1/p' config.yaml)
 
-.PHONY: env kg corpus candidates fuseki-build fuseki-up fuseki-down fuseki-status fuseki-smoke fuseki-backup vllm-env serve serve-stop serve-smoke serve2 serve2-stop serve2-smoke extract-dev extract validate rdf load verdicts silver-eval precision-sample precision report demo demo-stop demo-check
+.PHONY: env kg corpus candidates fuseki-build fuseki-up fuseki-down fuseki-status fuseki-smoke fuseki-backup vllm-env serve serve-stop serve-smoke serve2 serve2-stop serve2-smoke extract-dev extract validate rdf load verdicts silver-eval precision-sample precision report demo demo-stop demo-check abstracts
 
 ## M0 — pipeline env (micromamba, conda-forge only)
 env:
@@ -49,6 +49,7 @@ validate: ; $(PY) -m locx.extract.validate $(ARGS)
 ## M7 — claims to RDF + SHACL (quality flags, gate), then load into Fuseki
 rdf:  ; $(PY) -m locx.kg.claims_rdf build $(ARGS)
 load: ; $(PY) -m locx.kg.claims_rdf load $(ARGS)
+abstracts: ; $(PY) -m locx.kg.abstracts_rdf build && $(PY) -m locx.kg.abstracts_rdf load   # text for the demo's abstract view
 
 ## M8 — verdicts against GOA + aggregation (author groups, counts)
 verdicts: ; $(PY) -m locx.analysis.verdicts $(ARGS)
