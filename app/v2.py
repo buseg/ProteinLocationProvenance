@@ -592,6 +592,53 @@ def explore():
 
 
 # --- Quality -----------------------------------------------------------------------------------------
+ERROR_HELP = {   # plain meaning of the rubric's error types (reports/precision_rubric.md)
+    "not_stated": ("Not stated", "The abstract never says this protein is (or is not) at this location: the location "
+                   "belongs to another protein or process in the sentence, or the word is only part of a name."),
+    "normalization": ("Wrong protein", "The name in the text was linked to the wrong human gene (ambiguous symbol, "
+                      "family name, or a text fragment), so the claim is about the wrong protein."),
+    "organism_nonhuman": ("Not a human protein", "The protein is bacterial, viral or from another species with no "
+                          "human counterpart meant, but was linked to a human gene."),
+    "location": ("Wrong location", "Right protein, but the GO term is not what the text says (a different or more "
+                 "specific compartment)."),
+    "polarity": ("Present / absent flipped", "Read as 'absent' when the text only says reduced or not observed, or "
+                 "the other way round."),
+}
+
+
+def precision_errors(prec):
+    """Quality page: what the wrong claims in the precision sample got wrong, in plain words, with examples."""
+    a = prec["all"]
+    errs = prec.get("errors", [])
+    st.markdown("**What the wrong ones got wrong** (precision check)")
+    st.caption(f"{a['n'] - a['correct']} of {a['n']} sampled claims were judged wrong "
+               f"(rubric: reports/precision_rubric.md). One example per type; all of them below.")
+    rows = []
+    for k, n in sorted(prec["error_types"].items(), key=lambda kv: -kv[1]):
+        name, help_ = ERROR_HELP.get(k, (k.replace("_", " "), ""))
+        ex = next((e for e in errs if e["type"] == k), None)
+        rows.append({"error": name, "claims": n, "share of wrong": round(100 * n / max(a["n"] - a["correct"], 1)),
+                     "what it means": help_,
+                     "example": (f"{ex['protein']} ('{ex['mention'].split(';')[0]}') {'NOT ' if ex['polarity'] == 'absent' else ''}"
+                                 f"in {ex['location']}: {ex['reason']}") if ex else ""})
+    st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch", row_height=72,
+                 column_config={"share of wrong": st.column_config.ProgressColumn(format="%d%%", min_value=0, max_value=100),
+                                "what it means": st.column_config.TextColumn(width="large"),
+                                "example": st.column_config.TextColumn(width="large")})
+    bv = prec.get("by_verdict", {})
+    if bv:
+        st.caption("Precision by verdict of the claim's assertion: " + " · ".join(
+            f"{v} {x['correct']}/{x['n']} ({x['correct'] / x['n']:.0%})" for v, x in bv.items() if x["n"]))
+    if errs:
+        with st.expander(f"All {len(errs)} wrong claims with the judge's reason"):
+            st.dataframe(pd.DataFrame([{"error": ERROR_HELP.get(e["type"], (e["type"],))[0], "protein": e["protein"],
+                                        "mentioned as": e["mention"], "location": ("NOT " if e["polarity"] == "absent" else "")
+                                        + e["location"], "verdict": e["verdict"], "reason": e["reason"],
+                                        "PMID": f"{PUBMED}{e['pmid']}/"} for e in errs]),
+                         hide_index=True, width="stretch",
+                         column_config={"PMID": st.column_config.LinkColumn("PMID", display_text=r"https://pubmed\.ncbi\.nlm\.nih\.gov/(\d+)/"),
+                                        "reason": st.column_config.TextColumn(width="large")})
+
 def quality():
     st.title("How good is it?")
     st.caption("Live counts from Fuseki, plus the evaluation reports the pipeline wrote under reports/.")
@@ -629,10 +676,6 @@ def quality():
                        f"The co-occurrence baseline pairs every protein with every location in a sentence: similar recall, but only "
                        f"{silver['cooccurrence_baseline']['goa_agreement_hierarchical']:.0%} of its pairs agree with GOA "
                        f"vs {silver['llm']['goa_agreement_hierarchical']:.0%} for the LLM. {silver['caveat']}")
-        if prec:
-            st.markdown("**What the wrong ones got wrong** (manual check)")
-            st.dataframe(pd.DataFrame([{"error": k.replace("_", " "), "assertions": v} for k, v in prec["error_types"].items()]),
-                         hide_index=True, width="stretch")
     with right:
         flags = cached("error_flags")
         st.markdown("**Validator flags on claims** (live; some only warn)")
@@ -694,6 +737,8 @@ def quality():
                    f"(literature could upgrade them); {vj.get('conflicting_with_experimental_goa', 0):,} of "
                    f"{vj['verdicts']['Conflicting']:,} conflicts are with experimental GOA. In "
                    f"{vj.get('curated_from_same_paper', 0):,} assertions GOA cites one of the supporting papers.")
+    if prec:
+        precision_errors(prec)
     sparql(flags)
 
 

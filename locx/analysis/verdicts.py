@@ -1,6 +1,7 @@
 """M8: verdicts against GOA (SPARQL UPDATE in queries/verdicts_*.ru) + aggregation per assertion.
 
   python -m locx.analysis.verdicts [--run-id ID] [--replace]
+  python -m locx.analysis.verdicts --support-only   # only refresh "support_by_verdict" in verdicts.json from assertion_stats.tsv
 
 1. queries/verdicts_01_goa_links.ru, verdicts_02_rules.ru -> GRAPH <urn:locx:graph:verdicts>
 2. Python: independent author groups (locx/analysis/independence.py) and per-assertion stats from
@@ -38,11 +39,53 @@ def integer(x) -> str:
     return f'"{int(x)}"^^xsd:integer'
 
 
+def support_by_verdict(stats) -> dict:
+    """Per verdict: how many independent author groups (1..5+) and papers back the assertions, and how often
+    the claims are findings or hedged everywhere. stats: dicts with verdict, n_groups, n_papers,
+    n_papers_finding, n_papers_hedged (ints)."""
+    out = {}
+    for v in VERDICTS:
+        ss = [s for s in stats if s["verdict"] == v]
+        if not ss:
+            continue
+        n = len(ss)
+        papers = sorted(s["n_papers"] for s in ss)
+        out[v] = {"assertions": n,
+                  "by_n_groups": {str(k) if k < 5 else "5+": c for k, c in
+                                  sorted(Counter(min(s["n_groups"], 5) for s in ss).items())},
+                  "share_2plus_groups": round(sum(s["n_groups"] >= 2 for s in ss) / n, 3),
+                  "mean_groups": round(sum(s["n_groups"] for s in ss) / n, 2),
+                  "median_papers": papers[n // 2] if n % 2 else (papers[n // 2 - 1] + papers[n // 2]) / 2,
+                  "share_with_finding": round(sum(s["n_papers_finding"] > 0 for s in ss) / n, 3),
+                  "share_hedged_in_all_papers": round(sum(s["n_papers_hedged"] == s["n_papers"] for s in ss) / n, 3)}
+    return out
+
+
+def support_only():
+    """Recompute support_by_verdict from reports/assertion_stats.tsv and patch it into verdicts.json."""
+    csv.field_size_limit(sys.maxsize)
+    ints = ("n_groups", "n_papers", "n_papers_finding", "n_papers_hedged")
+    with open(REPORTS / "assertion_stats.tsv") as f:
+        stats = [{"verdict": r["verdict"], **{k: int(r[k]) for k in ints}} for r in csv.DictReader(f, delimiter="\t")]
+    path = REPORTS / "verdicts.json"
+    out = json.loads(path.read_text())
+    if len(stats) != out["assertions"]:
+        sys.exit(f"[verdicts] assertion_stats.tsv has {len(stats)} rows, verdicts.json says {out['assertions']}")
+    out["support_by_verdict"] = support_by_verdict(stats)
+    path.write_text(json.dumps(out, indent=2))
+    for v, d in out["support_by_verdict"].items():
+        print(f"  {v:13s} {d['assertions']:6d}  groups {d['by_n_groups']}  >=2: {d['share_2plus_groups']:.1%}")
+    print("[verdicts] support_by_verdict -> reports/verdicts.json")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--run-id", default=CFG["extract"]["main_run"])
     ap.add_argument("--replace", action="store_true")
+    ap.add_argument("--support-only", action="store_true")
     a = ap.parse_args()
+    if a.support_only:
+        return support_only()
     run_graph = G["run_prefix"] + a.run_id
     t0 = time.time()
 
@@ -170,6 +213,7 @@ def main():
            "curated_from_same_paper": sum(s["curated_from_same_paper"] for s in stats.values()),
            "novel_by_n_groups": dict(sorted(Counter(min(s["n_groups"], 5) for s in stats.values()
                                                     if s["verdict"] == "Novel").items())),
+           "support_by_verdict": support_by_verdict(list(stats.values())),
            "sparql_python_agreement": f"{len(stats) - len(bad)}/{len(stats)}",
            "seconds": round(time.time() - t0)}
     (REPORTS / "verdicts.json").write_text(json.dumps(out, indent=2))

@@ -154,6 +154,9 @@ NEXT_STEPS = [
     "provenance.",
     "**Qualifier-aware verdicts**: GOA's 'NOT is_active_in' is not 'NOT located_in' (e.g. nuclear PD-L1); only "
     "NOT located_in rows should make a conflict, others a softer flag.",
+    "**Organism-aware evidence**: use the per-claim organism field to mark claims from animal studies as weaker, "
+    "orthology-like evidence for the human protein (like GOA's ISO code); check the field against PubTator's "
+    "species annotations first, since nothing verifies it yet and about half of the claims state no organism.",
     "**Validator-in-the-loop repair** (multi-round), and its effect on precision.",
     "**A second model** (e.g. Qwen3.6-35B-A3B or Gemma 4 E4B) on the same corpus; agreement as a confidence signal.",
     "**Human Protein Atlas** as a second reference; **orthology mapping** for mouse / rat studies.",
@@ -368,10 +371,18 @@ def main():
            f"{ev['Refinement'].get('experimental', 0)} of {sum(ev['Refinement'].values())} refinement and "
            f"{ev['Conflicting'].get('experimental', 0)} of {sum(ev['Conflicting'].values())} conflicting assertions. "
            f"Context-dependent (a supporting mention states a condition): {ver['context_dependent']:,}. "
-           f"Supported by a paper that GOA itself cites: {ver['curated_from_same_paper']:,}. "
-           f"Novel assertions by independent author groups: "
-           + ", ".join(f"{k} group{'s' if k != '1' else ''}: {v}" for k, v in ver["novel_by_n_groups"].items()) + ".",
-           ""]
+           f"Supported by a paper that GOA itself cites: {ver['curated_from_same_paper']:,}.", ""]
+    sup = ver.get("support_by_verdict")
+    if sup:
+        bins = ["1", "2", "3", "4", "5+"]
+        md += ["**Support by independent author groups.** Number of assertions per verdict backed by 1, 2, … author "
+               "groups; finding = at least one paper states it as its own result; hedged = hedged in every paper:", ""]
+        md += table(["verdict", "assertions"] + [f"{b} group{'s' if b != '1' else ''}" for b in bins]
+                    + ["≥2 groups", "mean groups", "median papers", "finding", "hedged"],
+                    [[v, f"{d['assertions']:,}"] + [f"{d['by_n_groups'].get(b, 0):,}" for b in bins]
+                     + [pct(d["share_2plus_groups"]), f"{d['mean_groups']:.2f}", f"{d['median_papers']:g}",
+                        pct(d["share_with_finding"]), pct(d["share_hedged_in_all_papers"])] for v, d in sup.items()])
+        md += [""]
     eg = ver.get("goa_evidence_group_behind_verdict")
     if eg:
         md += ["**Strength of the GOA evidence behind the verdict.** Each GOA row carries a GO evidence code; codes are "

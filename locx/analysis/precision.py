@@ -92,6 +92,13 @@ def score():
             t = (r["notes"].split(":")[0].split()[0] if r["notes"].strip() else "unspecified")
             errors[t] = errors.get(t, 0) + 1
     out["error_types"] = errors
+    # every wrong claim with the judge's reason, for the demo's Quality page
+    out["errors"] = [{"type": (r["notes"].split(":")[0].split()[0] if r["notes"].strip() else "unspecified"),
+                      "reason": r["notes"].split(":", 1)[1].strip() if ":" in r["notes"] else r["notes"].strip(),
+                      "claim_id": r["claim_id"], "pmid": r["pmid"], "tier": r["tier"], "protein": r["protein_symbol"],
+                      "mention": r["protein_mention"], "location": r["location_label"], "polarity": r["polarity"],
+                      "verdict": r["verdict"], "sentence": r["sentence_text"]}
+                     for r in judged if r["correct"].strip() == "0"]
     by_verdict = {}
     for r in judged:
         v = by_verdict.setdefault(r["verdict"] or "?", [0, 0])
