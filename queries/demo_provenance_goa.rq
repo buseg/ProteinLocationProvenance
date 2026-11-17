@@ -1,0 +1,17 @@
+# Demo / Provenance graph: GOA rows linked to one assertion, with the kind of link
+#   same = same GO term, narrower = curated term below the paper's, broader = curated term above it
+PREFIX locx:    <http://example.org/locx/>
+PREFIX dcterms: <http://purl.org/dc/terms/>
+PREFIX rdfs:    <http://www.w3.org/2000/01/rdf-schema#>
+SELECT ?link ?t ?label ?qualifier ?negated ?evidence ?source ?assignedBy
+WHERE {
+  GRAPH <urn:locx:graph:verdicts> {
+    { <%ASSERTION%> locx:goaSame ?g .     BIND("same" AS ?link) } UNION
+    { <%ASSERTION%> locx:goaNarrower ?g . BIND("narrower" AS ?link) } UNION
+    { <%ASSERTION%> locx:goaBroader ?g .  BIND("broader" AS ?link) }
+  }
+  GRAPH <urn:locx:graph:goa-human> { ?g locx:location ?t ; locx:qualifier ?qualifier ; locx:negated ?negated ;
+                                        locx:evidenceCode ?evidence .
+                                     OPTIONAL { ?g dcterms:source ?source } OPTIONAL { ?g locx:assignedBy ?assignedBy } }
+  GRAPH <urn:locx:graph:go-cc>     { ?t rdfs:label ?label . }
+}

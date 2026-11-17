@@ -61,7 +61,7 @@ def cap(cands: dict, limit: int):
     return [v for _, v in kept], max(0, len(items) - limit)
 
 
-def process(paper, gene2acc, symbols, terms, rx, c, match_counter, multi_acc):
+def process(paper, gene2acc, symbols, terms, rx, c, match_counter, multi_acc, syn=None):
     text = paper["text"]
     sents = split(paper["title"], text)
     proteins = {}
@@ -80,11 +80,20 @@ def process(paper, gene2acc, symbols, terms, rx, c, match_counter, multi_acc):
             if len(gene2acc.get(gid, [])) > 1:
                 multi_acc[gid] = gene2acc[gid]
         mention = {"text": g["text"], "start": g["start"], "end": g["end"], "sentence": sentence_of(sents, g["start"])}
+        tagger_accs = list(dict.fromkeys(accs))
+        readings = syn.readings(g["text"], accs) if syn else None
+        if readings:                      # second layer: offer every reading of an ambiguous name
+            c["synonym_mentions_with_alternatives"] += 1
+            c["synonym_alternatives_added"] += len(set(readings) - set(accs))
+            accs = readings
         for acc in dict.fromkeys(accs):
             cand = proteins.setdefault(acc, {"uniprot": acc, "symbol": symbols.get(acc, acc),
                                              "gene_ids": sorted({x for x in g["gene_ids"] if acc in gene2acc.get(x, [])}),
                                              "mentions": []})
             cand["mentions"].append(mention)
+            if readings:
+                cand.setdefault("alt", {})[g["text"]] = "tagger" if acc in tagger_accs else "alternative"
+                cand["name"] = syn.names.get(acc, "")
     locations = {}
     for m in rx.finditer(text):
         s, e = m.span()
@@ -118,11 +127,18 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--papers", default=str(INTERIM / "papers.jsonl"))
     ap.add_argument("--tiers", default="dev,silver,discovery")
+    ap.add_argument("--suffix", help="write candidates.<suffix>.jsonl etc. instead of the active files")
+    ap.add_argument("--synonyms", action="store_true", help="add the second protein layer (synonym alternatives)")
     args = ap.parse_args()
+    sfx = f".{args.suffix}" if args.suffix else ""
     tiers = args.tiers.split(",")
 
     gene2acc, symbols = uniprot.gene_to_accessions(), load_symbols()
     terms, rx = load_dictionary()
+    syn = None
+    if args.synonyms:
+        from locx.extract.synonyms import SynonymIndex
+        syn = SynonymIndex()
     c, match_counter, multi_acc = Counter(), Counter(), {}
     per_tier = {t: Counter() for t in tiers}
     n_p, n_l = defaultdict(list), defaultdict(list)
@@ -131,7 +147,7 @@ def main():
         ts = [t for t in paper["tiers"] if t in tiers]
         if not ts:
             continue
-        rec = process(paper, gene2acc, symbols, terms, rx, c, match_counter, multi_acc)
+        rec = process(paper, gene2acc, symbols, terms, rx, c, match_counter, multi_acc, syn)
         has_p, has_l = bool(rec["proteins"]), bool(rec["locations"])
         reason = None if has_p and has_l else ("no_protein_and_no_location" if not (has_p or has_l)
                                                else "no_protein" if not has_p else "no_location")
@@ -145,7 +161,7 @@ def main():
                 per_tier[t]["truncated_locations"] += rec["truncated"]["locations"] > 0
         if not reason:
             out.append(rec)
-    write_jsonl(INTERIM / "candidates.jsonl", out)
+    write_jsonl(INTERIM / f"candidates{sfx}.jsonl", out)
 
     def dist(xs):
         if not xs:
@@ -164,14 +180,14 @@ def main():
              "location_matches": {"total": c["location_matches"], "ambiguous": c["location_matches_ambiguous"],
                                   "skipped_inside_gene_mention": c["location_matches_inside_gene_mention"]},
              "geneids_with_several_accessions": len(multi_acc)}
-    (REPORTS / "candidates_stats.json").write_text(json.dumps(stats, indent=1))
-    with open(REPORTS / "location_matches_top.tsv", "w") as f:
+    (REPORTS / f"candidates_stats{sfx}.json").write_text(json.dumps(stats, indent=1))
+    with open(REPORTS / f"location_matches_top{sfx}.tsv", "w") as f:
         f.write("rank\tmatched_text\tcount\tgo_terms\n")
         for i, (t, n) in enumerate(match_counter.most_common(100), 1):
             go = lookup(terms, t) or {}
             f.write(f"{i}\t{t}\t{n}\t{'; '.join(f'{k} {v}' for k, v in go.items())}\n")
 
-    print(f"[candidates] kept {len(out)} papers -> data/interim/candidates.jsonl")
+    print(f"[candidates] kept {len(out)} papers -> data/interim/candidates{sfx}.jsonl")
     for t in tiers:
         s = per_tier[t]
         print(f"  {t:9s} in {s['in']:5d}  kept {s['kept']:5d}  no_protein {s['no_protein']:4d}  no_location {s['no_location']:4d}  "

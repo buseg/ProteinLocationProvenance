@@ -103,10 +103,16 @@ def overview():
         show_query(q1, s1, run)
         show_query(q2, s2, cnt)
     st.subheader("Knowledge graph")
-    gs, q4, s4 = cached("graph_sizes")
-    st.dataframe(pd.DataFrame([{"named graph": g["graph"], "triples": int(g["triples"])} for g in gs]),
+    ms = D.manifest_sizes()
+    st.dataframe(pd.DataFrame([{"named graph": g["graph"], "triples": int(g["triples"]), "loaded": g["loaded_at"]}
+                               for g in sorted(ms, key=lambda g: -int(g["triples"]))]),
                  hide_index=True, width="stretch", column_config={"triples": st.column_config.NumberColumn(format="%d")})
-    show_query(q4, s4, gs)
+    st.caption("Counts as measured live by the loader when each graph was loaded (data/rdf/loaded.json).")
+    if st.button("Recount live (SPARQL, a few seconds)"):
+        gs, q4, s4 = cached("graph_sizes")
+        st.dataframe(pd.DataFrame([{"named graph": g["graph"], "triples": int(g["triples"])} for g in gs]),
+                     hide_index=True, width="stretch")
+        show_query(q4, s4, gs)
 
 
 def protein_explorer():

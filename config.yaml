@@ -24,12 +24,13 @@ llm:
 corpus:
   dev_per_protein: 25
   dev_years: [2015, 2026]
-  discovery_years: [2023, 2026]
-  discovery_cap: 3000      # MVP; expanded set (10000) built 2026-11-16, on hold
+  discovery_years: [2015, 2026]   # expansion 3 active (expansion 1-2: 2023-2026)
+  discovery_cap: 0         # expansion 3 active: no cap (expansion 2: 20000, expansion 1: 10000, MVP: 3000)
+  discovery_protein_filter: false   # expansion 3: V1 query without ABSTRACT:(protein*)
   discovery_cap_expanded: 10000
-  discovery_max_screen_per_year: 8000
+  discovery_max_screen_per_year: 14000
   discovery_stratify: year # cap split evenly over discovery_years (DECISIONS 2026-11-16)
-  silver_sample: 1000      # MVP; expanded set (5000) on hold
+  silver_sample: 19661     # expansion 3 active: full silver pool (expansion 2: 10000, expansion 1: 5000, MVP: 1000)
   silver_sample_expanded: 5000
   seed: 13
   dev_seeds:               # symbol: names used in the Europe PMC query (SPEC M3.1)
@@ -49,4 +50,4 @@ silver:
   evidence_low_throughput: [EXP, IDA, IPI, IMP, IGI, IEP]
   evidence_high_throughput: [HTP, HDA, HMP, HGI, HEP]
 extract:
-  main_run: gemma4-31b_20261116-1655   # MVP full run (prompt v2); used by validate / rdf / verdicts
+  main_run: gemma4-31b_20261117-0709   # expansion 3 final run (prompt v3, synonyms); expansion 2: -2038, expansion 1: -1831, MVP: -1655

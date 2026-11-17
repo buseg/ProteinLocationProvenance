@@ -18,6 +18,7 @@ import re
 import sys
 import time
 import unicodedata
+from pathlib import Path
 from collections import Counter
 
 import rdflib
@@ -65,8 +66,12 @@ def boolean(x) -> str:
     return "true" if x else "false"
 
 
+TRIPLES = [0]   # triples written by block() since the last reset (avoids re-parsing big files to count)
+
+
 def block(subject: str, pairs) -> str:
     pairs = [(p, o) for p, o in pairs if o is not None]
+    TRIPLES[0] += len(pairs)
     return subject + " " + " ;\n    ".join(f"{p} {o}" for p, o in pairs) + " .\n"
 
 
@@ -231,6 +236,85 @@ def shacl(data_paths, shapes_path, report_path, title):
     return conforms, hits
 
 
+CHUNK_PAPERS = 2000
+WORKERS = 16
+_BASE = {}
+
+
+def _validate_chunk(args):
+    """Worker: base graphs (GO, UniProt; parsed once per process) + one chunk -> pySHACL results."""
+    chunk_paths, base_paths, shapes_path = args
+    key = tuple(base_paths)
+    if key not in _BASE:
+        b = rdflib.Graph()
+        for p in base_paths:
+            b.parse(p, format="turtle")
+        _BASE[key] = b
+    g = rdflib.Graph()
+    for t in _BASE[key]:
+        g.add(t)
+    for p in chunk_paths:
+        g.parse(p, format="turtle")
+    conforms, results, _ = validate(g, shacl_graph=str(shapes_path), shacl_graph_format="turtle",
+                                    inference="none", advanced=True, allow_warnings=True)
+    hits = [(str(results.value(r, SH.sourceShape)), str(results.value(r, SH.focusNode)),
+             str(results.value(r, SH.resultSeverity)).rsplit("#", 1)[-1], str(results.value(r, SH.resultMessage)))
+            for r in results.subjects(rdflib.RDF.type, SH.ValidationResult)]
+    return conforms, hits, len(g)
+
+
+def shacl_chunked(chunks, base_paths, shapes_path, report_path, title):
+    """Validate chunk by chunk in parallel. Every shape is local to a mention, assertion, paper or run, and a
+    chunk holds whole papers with their mentions and the assertions those mentions make, so the union of the
+    chunk results equals one big validation (assertions nobody asserts are checked separately)."""
+    from concurrent.futures import ProcessPoolExecutor
+    t = time.time()
+    conforms, hits, sizes = True, [], []
+    with ProcessPoolExecutor(max_workers=min(WORKERS, len(chunks))) as ex:
+        for c, h, n in ex.map(_validate_chunk, [(ch, base_paths, shapes_path) for ch in chunks]):
+            conforms &= c
+            hits += h
+            sizes.append(n)
+    hits = sorted(set(hits))
+    lines = [f"# {title}", f"# chunks: {len(chunks)} (up to {CHUNK_PAPERS} papers each, {WORKERS} workers); "
+             f"base: {', '.join(Path(p).name for p in base_paths)}", f"# shapes: {shapes_path.relative_to(ROOT)}",
+             f"# conforms: {conforms}", f"# results: {len(hits)}", ""]
+    lines += [f"{sev}\t{s.rsplit('/', 1)[-1]}\t{f_}\t{msg}" for s, f_, sev, msg in hits]
+    report_path.write_text("\n".join(lines) + "\n")
+    print(f"[shacl] {title}: {len(chunks)} chunks, largest {max(sizes)} triples, conforms={conforms}, "
+          f"{len(hits)} results ({time.time() - t:.0f} s)")
+    return conforms, hits
+
+
+def write_chunks(kind, meta, claims, cands, papers, with_papers):
+    """data/rdf/chunks/<kind>/NNNN_*.ttl: whole papers (by PMID) with their mentions and assertions."""
+    import shutil
+    d = RDF / "chunks" / kind
+    if d.exists():
+        shutil.rmtree(d)   # our own scratch files from a previous build
+    d.mkdir(parents=True)
+    by_pmid = {}
+    for cl in claims:
+        by_pmid.setdefault(cl["pmid"], []).append(cl)
+    pmids = [p["pmid"] for p in papers] if with_papers else sorted(by_pmid, key=int)
+    chunks = []
+    for i in range(0, len(pmids), CHUNK_PAPERS):
+        part = pmids[i:i + CHUNK_PAPERS]
+        cs = [cl for p in part for cl in by_pmid.get(p, [])]
+        files = []
+        if cs:
+            run_ttl(meta, cs, cands, d / f"{i // CHUNK_PAPERS:04d}_run.ttl")
+            files.append(str(d / f"{i // CHUNK_PAPERS:04d}_run.ttl"))
+        if with_papers:
+            sub = set(part)
+            papers_ttl([p for p in papers if p["pmid"] in sub], d / f"{i // CHUNK_PAPERS:04d}_papers.ttl")
+            assertions_ttl(cs, d / f"{i // CHUNK_PAPERS:04d}_assertions.ttl")
+            files += [str(d / f"{i // CHUNK_PAPERS:04d}_papers.ttl"), str(d / f"{i // CHUNK_PAPERS:04d}_assertions.ttl")]
+        if files:
+            chunks.append(files)
+    return chunks
+
+
 def build(run_id):
     t0 = time.time()
     check_shape_ids()
@@ -245,8 +329,9 @@ def build(run_id):
     for cl in claims:
         cl["valid"] = cl["valid_provisional"]
     mention_iri = run_ttl(meta, claims, cands, run_path)
-    _, hits = shacl([run_path, RDF / "go_cc.ttl"], SHAPES / "quality.shacl.ttl",
-                    REPORTS / "shacl_quality_report.txt", "quality shapes (V5, V6)")
+    _, hits = shacl_chunked(write_chunks("quality", meta, claims, cands, papers, with_papers=False),
+                            [str(RDF / "go_cc.ttl")], SHAPES / "quality.shacl.ttl",
+                            REPORTS / "shacl_quality_report.txt", "quality shapes (V5, V6)")
     by_mention = {}
     for shape, focus, _, _ in hits:
         if shape in QUALITY_FLAGS:
@@ -261,19 +346,25 @@ def build(run_id):
         q["invalidated_by_shacl"] += cl["valid_provisional"] and not cl["valid"]
 
     # 2. final graphs
+    triples = {}
+    TRIPLES[0] = 0
     run_ttl(meta, claims, cands, run_path)
+    triples[run_path.name] = TRIPLES[0]
+    TRIPLES[0] = 0
     n_assert = assertions_ttl(claims, RDF / "assertions.ttl")
+    triples["assertions.ttl"] = TRIPLES[0]
+    TRIPLES[0] = 0
     pstats = papers_ttl(papers, RDF / "papers.ttl")
+    triples["papers.ttl"] = TRIPLES[0]
     write_jsonl(run_dir / "claims_final.jsonl", claims)
+    asserted = {assertion_key(cl) for cl in claims if cl["valid"]}
+    assert len(asserted) == n_assert, "every assertion must come from a valid mention"
 
     # 3. gate shapes
-    conforms, gate_hits = shacl([RDF / "papers.ttl", run_path, RDF / "assertions.ttl", RDF / "go_cc.ttl",
-                                 RDF / "uniprot_human.ttl"], SHAPES / "claims.shacl.ttl",
-                                REPORTS / "shacl_report.txt", "gate shapes (SPEC M7)")
-    triples = {}
-    for name in ("papers.ttl", run_path.name, "assertions.ttl"):
-        g = rdflib.Graph().parse(RDF / name, format="turtle")
-        triples[name] = len(g)
+    conforms, gate_hits = shacl_chunked(write_chunks("gate", meta, claims, cands, papers, with_papers=True),
+                                        [str(RDF / "go_cc.ttl"), str(RDF / "uniprot_human.ttl")],
+                                        SHAPES / "claims.shacl.ttl", REPORTS / "shacl_report.txt",
+                                        "gate shapes (SPEC M7)")
     valid = sum(cl["valid"] for cl in claims)
     per_tier = {}
     for t in meta["tiers"]:

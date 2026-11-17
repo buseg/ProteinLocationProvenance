@@ -10,7 +10,7 @@ case "${1:-}" in
   start)
     if running; then echo "[demo] already running (pid $(cat $PIDFILE))"; exit 0; fi
     mkdir -p logs data
-    setsid nohup "$MM" run -n locx streamlit run app/streamlit_app.py --server.address 127.0.0.1 --server.port 8501 \
+    setsid nohup "$MM" run -n locx streamlit run app/v2.py --server.address 127.0.0.1 --server.port 8501 \
       --server.headless true --browser.gatherUsageStats false >> $LOG 2>&1 < /dev/null &
     echo $! > $PIDFILE
     for _ in $(seq 30); do

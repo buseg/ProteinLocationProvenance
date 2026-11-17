@@ -93,7 +93,7 @@ def figures(verdicts, claims, stats_rows, silver):
     s = [by["silver"][y] for y in years]
     d = [by["discovery"][y] for y in years]
     ax.bar(years, s, width=0.8, color=BLUE, label="silver (GOA-cited)", edgecolor=SURFACE, linewidth=1)
-    ax.bar(years, d, width=0.8, bottom=s, color=ORANGE, label="discovery (2023–2026)", edgecolor=SURFACE, linewidth=1)
+    ax.bar(years, d, width=0.8, bottom=s, color=ORANGE, label=f"discovery ({CFG['corpus']['discovery_years'][0]}–{CFG['corpus']['discovery_years'][1]})", edgecolor=SURFACE, linewidth=1)
     style(ax, "Valid claims per publication year", "valid claims")
     ax.legend(frameon=False, labelcolor=INK2, loc="upper left")
     fig.tight_layout()
@@ -280,8 +280,12 @@ def main():
                      with_claim[t] if t != "dev" else "–", with_valid[t] if t != "dev" else "–",
                      pct(pt["share_with_orcid"], 0)])
     md += table(["tier", "selected", "with abstract + PubTator", "kept by prefilter", "≥1 claim", "≥1 valid claim", "with ORCID"], rows)
-    md += ["", f"Discovery: {CFG['corpus']['discovery_cap']:,} papers, 750 per year 2023–2026, top Europe PMC relevance with ≥1 "
-           f"human Swiss-Prot gene. Gene mentions: {cand['gene_mentions']['human']:,} human, "
+    cc = CFG["corpus"]
+    y0, y1 = cc["discovery_years"]
+    query = "localization terms" + (" AND protein*" if cc.get("discovery_protein_filter", True) else " (no protein* filter)")
+    scope = (f"every Europe PMC hit per year {y0}–{y1}" if cc["discovery_cap"] == 0 else
+             f"{cc['discovery_cap']:,} papers, {cc['discovery_cap'] // (y1 - y0 + 1):,} per year {y0}–{y1}, top Europe PMC relevance")
+    md += ["", f"Discovery: {scope}, query {query}, kept if ≥1 human Swiss-Prot gene. Gene mentions: {cand['gene_mentions']['human']:,} human, "
            f"{cand['gene_mentions']['non_human']:,} non-human ({pct(cand['gene_mentions']['share_non_human'], 0)}, no orthology mapping). "
            "The dev tier was used for prompt review only.", ""]
 
@@ -293,7 +297,9 @@ def main():
            f"finding {sum(c['source_type'] == 'finding' for c in rc):,}, background {sum(c['source_type'] == 'background' for c in rc):,}; "
            f"hedged {sum(c['certainty'] == 'hedged' for c in rc):,}; absent {sum(c['polarity'] == 'absent' for c in rc):,}; "
            f"OTHER location {sum(c['location'] == 'OTHER' for c in rc):,}. "
-           f"Throughput {tp.get('abstracts_per_s', '?')} abstracts/s (1 GPU, concurrency {CFG['llm']['concurrency']}); "
+           f"Throughput {tp.get('abstracts_per_s', '?')} abstracts/s in the last session "
+           f"({len(json.loads((RUNS / rid / 'run.json').read_text())['sessions'][-1].get('endpoints') or [1])} GPU(s), "
+           f"concurrency {CFG['llm']['concurrency']} per GPU); "
            f"tokens per abstract: prompt {ext['tokens']['prompt_mean']:,}, completion {ext['tokens']['completion_mean']}.", ""]
     md += table(["tier", "abstracts", "claims", "claims / abstract", "≥1 claim"],
                 [[t, v["abstracts"], f"{v['claims']:,}", v["claims_per_abstract"], pct(v["share_with_claim"], 0)]
@@ -356,7 +362,8 @@ def main():
            f"**{pa['correct']}/{pa['n']} = {pct(pa['precision'])}** (95% Wilson {pct(pa['wilson95'][0])}–{pct(pa['wilson95'][1])}); "
            f"discovery {pct(prec['discovery']['precision'])}, silver {pct(prec['silver']['precision'])}. Errors: "
            + ", ".join(f"{k} {v}" for k, v in prec["error_types"].items())
-           + ". The judge is an LLM that also helped design the pipeline, not an independent annotator.",
+           + ". The sample was drawn from the MVP run (same model and prompt; those answers are reused unchanged in the "
+           "expanded run). The judge is an LLM that also helped design the pipeline, not an independent annotator.",
            "", f"*{silver['caveat']}*", ""]
 
     md += ["## 7. Runs and GPU hours", ""]

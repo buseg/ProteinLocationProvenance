@@ -206,19 +206,33 @@ def main():
     if a.limit:
         recs_all = recs_all[:a.limit]
     if a.seed_from and not a.run_id:
-        seed_dir = RUNS / a.seed_from
-        sm = json.loads((seed_dir / "run.json").read_text())
-        same = ("model", "prompt_sha256", "schema_version", "temperature", "max_tokens")
-        if any(sm[k] != meta[k] for k in same):
-            raise SystemExit(f"[extract] cannot seed from {a.seed_from}: differs in {[k for k in same if sm[k] != meta[k]]}")
-        wanted, last = {r["pmid"] for r in recs_all}, {}
-        for r in read_jsonl(seed_dir / "raw.jsonl"):
-            last[r["pmid"]] = r
-        seeded = [dict(r, seeded_from=a.seed_from) for p, r in last.items() if p in wanted and r["status"] != "error"]
+        new_in = {r["pmid"]: r for r in recs_all}
+        seeded, changed, done_p = [], 0, set()
+        for seed_id in a.seed_from.split(","):   # several seed runs allowed; first match wins
+            seed_dir = RUNS / seed_id
+            sm = json.loads((seed_dir / "run.json").read_text())
+            same = ("model", "schema_version", "temperature", "max_tokens")
+            if any(sm[k] != meta[k] for k in same):
+                raise SystemExit(f"[extract] cannot seed from {seed_id}: differs in {[k for k in same if sm[k] != meta[k]]}")
+            # reuse an answer only if this abstract's request would be identical (system + user message + schema)
+            old_in = {r["pmid"]: r for r in read_jsonl(ROOT / sm["input"])}
+            last = {}
+            for r in read_jsonl(seed_dir / "raw.jsonl"):
+                last[r["pmid"]] = r
+            for p, r in last.items():
+                if p in done_p or p not in new_in or r["status"] == "error" or p not in old_in:
+                    continue
+                if prompt.messages(old_in[p]) == prompt.messages(new_in[p]) and schema.build(old_in[p]) == schema.build(new_in[p]):
+                    seeded.append(dict(r, seeded_from=seed_id))
+                    done_p.add(p)
+                else:
+                    changed += 1
+        print(f"[extract] seed check: {len(seeded)} identical requests reused, {changed} changed (re-asked)")
         with open(run_dir / "raw.jsonl", "w") as f:
             for r in seeded:
                 f.write(json.dumps(r, ensure_ascii=False) + "\n")
-        meta["seeded_from"] = {"run_id": a.seed_from, "records": len(seeded)}
+        meta["seeded_from"] = {"run_id": a.seed_from, "records": len(seeded), "changed_inputs": changed,
+                               "rule": "identical system + user message + schema"}
         print(f"[extract] seeded {len(seeded)} answers from run {a.seed_from}")
     done = done_pmids(run_dir / "raw.jsonl")
     todo = [r for r in recs_all if r["pmid"] not in done]

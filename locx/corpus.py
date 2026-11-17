@@ -49,9 +49,20 @@ def goa_index():
     return any_pmids, pairs
 
 
+def nested_sample(pool, k, seed):
+    """Random sample whose smaller sizes are subsets of the larger ones. random.sample(pool, k) is a
+    prefix-stable draw only while it uses its set-based branch (k <= 5000 for this pool, so the 1,000
+    sample is inside the 5,000 one); above that, keep the 5,000 sample and add the rest from the remainder."""
+    if k <= 5000:
+        return random.Random(seed).sample(pool, k)
+    base = random.Random(seed).sample(pool, 5000)
+    rest = sorted(set(pool) - set(base), key=int)
+    return base + random.Random(seed + 1).sample(rest, min(k - 5000, len(rest)))
+
+
 def silver_tier(pairs):
     pool = sorted(pairs, key=int)
-    sample = sorted(random.Random(C["seed"]).sample(pool, C["silver_sample"]), key=int)
+    sample = sorted(nested_sample(pool, C["silver_sample"], C["seed"]), key=int)
     print(f"[silver] {len(pool)} PMIDs with low-throughput experimental evidence; sampled {len(sample)} (seed {C['seed']})")
     recs = europepmc.by_pmids(sample)
     print(f"[silver] Europe PMC records: {len(recs)}/{len(sample)}")
@@ -63,13 +74,17 @@ def discovery_tier(gene2acc, step: int = 250, max_screen: int | None = None):
     abstract in PubTator and >= 1 gene mapping to human Swiss-Prot, until discovery_cap / n_years."""
     y0, y1 = C["discovery_years"]
     years = list(range(y0, y1 + 1))
-    per_year = C["discovery_cap"] // len(years)
-    max_screen = max_screen or C.get("discovery_max_screen_per_year", 4000)
+    if C["discovery_cap"] == 0:          # no cap: walk each year's whole ranking (decisions 2026-11-16)
+        per_year, max_screen, step = 10 ** 9, 10 ** 9, 1000
+    else:
+        per_year = C["discovery_cap"] // len(years)
+        max_screen = max_screen or C.get("discovery_max_screen_per_year", 4000)
+    protein = " AND ABSTRACT:(protein*)" if C.get("discovery_protein_filter", True) else ""
     recs, meta = [], {"order": "Europe PMC relevance within each year; kept if >= 1 human Swiss-Prot gene",
                       "per_year": {}, "queries": {}}
     seen = set()  # a paper can rank in two year queries (e.g. online vs print year); keep it once
     for y in years:
-        q = f"ABSTRACT:{LOC} AND ABSTRACT:(protein*) AND {BASE} AND PUB_YEAR:{y}"
+        q = f"ABSTRACT:{LOC}{protein} AND {BASE} AND PUB_YEAR:{y}"
         kept, skipped, screened = [], Counter(), 0
         while len(kept) < per_year and screened < max_screen:
             hits, ranked = europepmc.search(q, limit=screened + step)
@@ -105,11 +120,35 @@ def discovery_tier(gene2acc, step: int = 250, max_screen: int | None = None):
 
 
 def main():
+    import argparse
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--silver", type=int, help="silver sample size (default config)")
+    ap.add_argument("--discovery", type=int, help="discovery cap (default config)")
+    ap.add_argument("--max-screen", type=int, help="discovery: max papers screened per year")
+    ap.add_argument("--suffix", help="write papers.<suffix>.jsonl etc. instead of the active files")
+    ap.add_argument("--years", type=int, nargs=2, metavar=("FIRST", "LAST"), help="discovery years")
+    ap.add_argument("--no-protein-filter", action="store_true", help="discovery query without ABSTRACT:(protein*) (V1)")
+    ap.add_argument("--no-silver", action="store_true", help="skip the silver tier (per-year discovery slices)")
+    a = ap.parse_args()
+    if a.silver:
+        C["silver_sample"] = a.silver
+    if a.discovery is not None:
+        C["discovery_cap"] = a.discovery
+    if a.years:
+        C["discovery_years"] = a.years
+    if a.no_protein_filter:
+        C["discovery_protein_filter"] = False
+    if a.max_screen:
+        C["discovery_max_screen_per_year"] = a.max_screen
+    sfx = f".{a.suffix}" if a.suffix else ""
     t0 = time.time()
     dev_recs, dev_meta = dev_tier()
     disc_recs, disc_meta = discovery_tier(uniprot.gene_to_accessions())
     in_goa, pairs = goa_index()
-    silver_pmids, silver_recs, silver_meta = silver_tier(pairs)
+    if a.no_silver:   # per-year slices for incremental extraction: discovery only, no new API calls
+        silver_pmids, silver_recs, silver_meta = [], [], {"skipped": "--no-silver"}
+    else:
+        silver_pmids, silver_recs, silver_meta = silver_tier(pairs)
 
     tiers, records = defaultdict(list), {}
     for r in dev_recs:
@@ -152,7 +191,7 @@ def main():
         for t in ts:
             kept[t] += 1
 
-    write_jsonl(INTERIM / "papers.jsonl", papers)
+    write_jsonl(INTERIM / f"papers{sfx}.jsonl", papers)
 
     def share(f, rows):
         return round(sum(map(f, rows)) / len(rows), 3) if rows else 0
@@ -170,10 +209,10 @@ def main():
              "share_with_orcid_all": share(lambda p: any(a["orcid"] for a in p["authors"]), papers)}
     meta = {"built_at": time.strftime("%Y-%m-%dT%H:%M:%S"), "dev": dev_meta, "silver": silver_meta,
             "discovery": disc_meta, "localization_clause": LOC, "base_filter": BASE}
-    (INTERIM / "corpus_meta.json").write_text(json.dumps(meta, indent=1, ensure_ascii=False))
-    (REPORTS / "corpus_stats.json").write_text(json.dumps(stats, indent=1))
+    (INTERIM / f"corpus_meta{sfx}.json").write_text(json.dumps(meta, indent=1, ensure_ascii=False))
+    (REPORTS / f"corpus_stats{sfx}.json").write_text(json.dumps(stats, indent=1))
 
-    print(f"[corpus] {len(papers)} papers -> data/interim/papers.jsonl ({time.time() - t0:.0f} s)")
+    print(f"[corpus] {len(papers)} papers -> data/interim/papers{sfx}.jsonl ({time.time() - t0:.0f} s)")
     for t in TIERS:
         s = per_tier[t]
         print(f"  {t:9s} selected {s['selected']:5d}  kept {s['kept']:5d}  dropped {s['dropped']}  "

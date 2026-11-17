@@ -24,7 +24,7 @@ from collections import Counter, defaultdict
 
 from rapidfuzz import fuzz, process
 
-from locx.config import CFG, DATA, INTERIM, RAW, REPORTS
+from locx.config import CFG, DATA, INTERIM, RAW, REPORTS, ROOT
 from locx.extract.candidates import load_dictionary
 from locx.io import read_jsonl, write_jsonl
 from locx.kg.go_cc import check_label, parse
@@ -101,7 +101,9 @@ def main():
     a = ap.parse_args()
     run_dir = RUNS / a.run_id
     meta = json.loads((run_dir / "run.json").read_text())
-    cands = {r["pmid"]: r for r in read_jsonl(INTERIM / "candidates.jsonl") if set(meta["tiers"]) & set(r["tiers"])}
+    # the run's own candidates file (run.json "input"); older runs without it used candidates.jsonl
+    src = ROOT / meta["input"] if meta.get("input") else INTERIM / "candidates.jsonl"
+    cands = {r["pmid"]: r for r in read_jsonl(src) if set(meta["tiers"]) & set(r["tiers"])}
     last = {}
     for r in read_jsonl(run_dir / "raw.jsonl"):
         last[r["pmid"]] = r

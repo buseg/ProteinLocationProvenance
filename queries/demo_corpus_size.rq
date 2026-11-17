@@ -1,0 +1,6 @@
+# Demo / Home: papers in the corpus (papers graph), by tier
+PREFIX locx:    <http://example.org/locx/>
+PREFIX dcterms: <http://purl.org/dc/terms/>
+SELECT ?tier (COUNT(DISTINCT ?paper) AS ?papers)
+WHERE { GRAPH <urn:locx:graph:papers> { ?paper dcterms:title ?t ; locx:tier ?tier . } }
+GROUP BY ?tier

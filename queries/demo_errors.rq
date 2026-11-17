@@ -1,19 +1,17 @@
-# Demo / Errors: invalid mentions with one flag (%FLAG%), with the sentence and what the model chose
+# Demo / Errors: invalid mentions with one flag (%FLAG%), with the sentence and what the model chose.
+# The 200 mentions are picked first (subquery), then joined to the labels, which keeps it fast.
 PREFIX locx:    <http://example.org/locx/>
 PREFIX prov:    <http://www.w3.org/ns/prov#>
-PREFIX dcterms: <http://purl.org/dc/terms/>
 PREFIX rdfs:    <http://www.w3.org/2000/01/rdf-schema#>
-PREFIX foaf:    <http://xmlns.com/foaf/0.1/>
 SELECT ?m ?paper ?symbol ?label ?otherText ?polarity ?sentenceId ?sentence
 WHERE {
+  { SELECT ?m WHERE { GRAPH <%RUN_GRAPH%> { ?m locx:flag "%FLAG%" ; locx:valid false . } } LIMIT 200 }
   GRAPH <%RUN_GRAPH%> {
-    ?m locx:valid false ; locx:flag "%FLAG%" ; locx:protein ?protein ; locx:polarity ?polarity ;
-       prov:wasDerivedFrom ?paper ; locx:sentenceId ?sentenceId ; locx:sentenceText ?sentence .
-    OPTIONAL { ?m locx:location ?term }
+    ?m locx:protein ?protein ; locx:polarity ?polarity ; prov:wasDerivedFrom ?paper ;
+       locx:sentenceId ?sentenceId ; locx:sentenceText ?sentence .
     OPTIONAL { ?m locx:otherLocationText ?otherText }
   }
   GRAPH <urn:locx:graph:uniprot-human> { ?protein locx:geneSymbol ?symbol . }
-  OPTIONAL { GRAPH <urn:locx:graph:go-cc> { ?term rdfs:label ?label . } }
+  # term and label in one OPTIONAL: an unbound ?term must not match every GO label
+  OPTIONAL { GRAPH <%RUN_GRAPH%> { ?m locx:location ?term . } GRAPH <urn:locx:graph:go-cc> { ?term rdfs:label ?label . } }
 }
-ORDER BY ?paper
-LIMIT 200

@@ -2,7 +2,7 @@
 strings only; never UniProt accessions or GO IDs."""
 import hashlib
 
-PROMPT_VERSION = "v2"  # bump whenever SYSTEM or the user-message layout changes
+PROMPT_VERSION = "v3"  # v3 = v2 + alternative readings of ambiguous protein names (only in affected user messages)  # bump whenever SYSTEM or the user-message layout changes
 
 SYSTEM = """You extract subcellular localization claims about proteins from a PubMed title and abstract.
 
@@ -75,11 +75,29 @@ def _mentions(cand: dict) -> str:
     return ", ".join(f'"{t}"' for t in seen)
 
 
+ALT_NOTE = ("Some names can mean different proteins; their readings are marked below. Choose the protein the text "
+            "means from the context; if the context does not decide, use the tagger's reading. Never make claims for "
+            "two readings of the same name.")
+
+
+def _protein_line(p: dict) -> str:
+    line = f"{p['cid']} = {p['symbol'] or p['uniprot']}"
+    if p.get("alt"):
+        line += f" ({p.get('name', '')})" if p.get("name") else ""
+    line += f" — mentioned as: {_mentions(p)}"
+    if p.get("alt"):
+        line += " " + " ".join(f"[{'tagger' if role == 'tagger' else 'alternative'} reading of \"{t}\"]"
+                               for t, role in p["alt"].items())
+    return line
+
+
 def user_message(rec: dict) -> str:
     lines = ["Sentences:"]
     lines += [f"[{s['id']}] {s['text']}" for s in rec["sentences"]]
     lines += ["", "Candidate proteins (found by a tagger; some may be irrelevant):"]
-    lines += [f"{p['cid']} = {p['symbol'] or p['uniprot']} — mentioned as: {_mentions(p)}" for p in rec["proteins"]]
+    if any(p.get("alt") for p in rec["proteins"]):
+        lines.append(ALT_NOTE)
+    lines += [_protein_line(p) for p in rec["proteins"]]
     lines += ["", "Candidate locations (found by a dictionary; some may be false matches):"]
     lines += [f"{l['cid']} = {l['label']} — mentioned as: {_mentions(l)}" for l in rec["locations"]]
     return "\n".join(lines)
@@ -92,6 +110,8 @@ def messages(rec: dict) -> list[dict]:
 def prompt_sha256() -> str:
     """Hash of the system prompt plus a fixed dummy user message (catches layout changes too)."""
     dummy = {"sentences": [{"id": "S1", "text": "x"}],
-             "proteins": [{"cid": "P1", "symbol": "X", "uniprot": "X", "mentions": [{"text": "x"}]}],
+             "proteins": [{"cid": "P1", "symbol": "X", "uniprot": "X", "mentions": [{"text": "x"}]},
+                          {"cid": "P2", "symbol": "Y", "uniprot": "Y", "name": "y", "alt": {"x": "alternative"},
+                           "mentions": [{"text": "x"}]}],
              "locations": [{"cid": "L1", "label": "x", "mentions": [{"text": "x"}]}]}
     return hashlib.sha256((SYSTEM + "\n\x00\n" + user_message(dummy)).encode()).hexdigest()

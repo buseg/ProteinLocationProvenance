@@ -137,3 +137,73 @@ def go_parents(terms):
 
 def neighborhood_papers(acc):
     return run("demo_neighborhood_papers.rq", PROTEIN=protein_iri(acc))
+
+
+def manifest_sizes():
+    """Triples per named graph as counted live by the loader at load time (data/rdf/loaded.json)."""
+    import json
+    from locx.config import RDF
+    m = json.loads((RDF / "loaded.json").read_text())
+    return [{"graph": g, "triples": str(e["triples"]), "loaded_at": e.get("loaded_at", "")} for g, e in m.items()]
+
+
+# --- v2 demo (Home / Protein / Provenance / Explore / Quality) ----------------------------------------
+# Coarse compartments for the protein profile, most specific first; each GO ID is checked against its label
+# (returned by the query) before use, so a wrong ID fails loudly instead of mislabelling rows.
+COMPARTMENTS = [("GO_0005739", "mitochondrion"), ("GO_0005634", "nucleus"), ("GO_0005694", "chromosome"),
+                ("GO_0005783", "endoplasmic reticulum"), ("GO_0005794", "Golgi apparatus"), ("GO_0005768", "endosome"),
+                ("GO_0005764", "lysosome"), ("GO_0005777", "peroxisome"), ("GO_0005856", "cytoskeleton"),
+                ("GO_0031982", "vesicle"), ("GO_0030054", "cell junction"), ("GO_0042995", "cell projection"),
+                ("GO_0005886", "plasma membrane"), ("GO_0005576", "extracellular region"), ("GO_0005829", "cytosol"),
+                ("GO_0005737", "cytoplasm"), ("GO_0016020", "membrane")]
+OBO = "http://purl.obolibrary.org/obo/"
+
+
+def assertions_all():
+    return run("demo_assertions_all.rq")
+
+
+def corpus_size():
+    return run("demo_corpus_size.rq")
+
+
+def compartments(terms):
+    """{GO IRI: compartment label} (first matching compartment in COMPARTMENTS order; 'other' if none)."""
+    terms = sorted(set(terms))
+    if not terms:
+        return {}, "", 0.0
+    if not all(GO.match(t) for t in terms):
+        raise ValueError("not a GO term IRI")
+    rows, q, s = run("demo_compartments.rq", TERMS=" ".join(f"<{t}>" for t in terms),
+                     BUCKETS=" ".join(f"<{OBO}{g}>" for g, _ in COMPARTMENTS))
+    expected = {OBO + g: label for g, label in COMPARTMENTS}
+    rank = {OBO + g: i for i, (g, _) in enumerate(COMPARTMENTS)}
+    best = {}
+    for r in rows:
+        if r["bucketLabel"] != expected[r["bucket"]]:
+            raise ValueError(f"compartment {r['bucket']} has label {r['bucketLabel']!r}, expected {expected[r['bucket']]!r}")
+        if r["term"] not in best or rank[r["bucket"]] < rank[best[r["term"]]]:
+            best[r["term"]] = r["bucket"]
+    return {t: expected[best[t]] if t in best else "other" for t in terms}, q, s
+
+
+def protein_years(acc):
+    return run("demo_protein_years.rq", PROTEIN=protein_iri(acc))
+
+
+def provenance_goa(key):
+    return run("demo_provenance_goa.rq", ASSERTION=assertion_iri(key))
+
+
+def provenance_authors(key):
+    return run("demo_provenance_authors.rq", ASSERTION=assertion_iri(key))
+
+
+def report(name):
+    """A JSON report written by the pipeline under reports/ (None if missing)."""
+    import json
+    from locx.config import REPORTS
+    if not re.match(r"^[a-z0-9_]+$", name):
+        raise ValueError("bad report name")
+    p = REPORTS / f"{name}.json"
+    return json.loads(p.read_text()) if p.exists() else None

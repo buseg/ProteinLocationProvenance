@@ -127,7 +127,12 @@ def main():
     path = RDF / f"verdict_stats_{a.run_id}.ttl"
     path.write_text("\n".join(ttl) + "\n")
     fuseki.append(V, path)
-    print(f"[verdicts] appended stats + author groups ({len(ttl) - 1} statements); {V}: {fuseki.count(V)} triples")
+    nv = fuseki.count(V)
+    print(f"[verdicts] appended stats + author groups ({len(ttl) - 1} statements); {V}: {nv} triples")
+    man = json.loads(fuseki.MANIFEST.read_text()) if fuseki.MANIFEST.exists() else {}
+    man[V] = {"file": "(SPARQL UPDATE + verdict_stats)", "sha256": None, "triples": nv,
+              "loaded_at": time.strftime("%Y-%m-%dT%H:%M:%S")}
+    fuseki.MANIFEST.write_text(json.dumps(man, indent=1))
 
     # 3. cross-check with the SPARQL version of the stats
     q = (QUERIES / "assertion_stats.rq").read_text().replace("%RUN_GRAPH%", run_graph)
