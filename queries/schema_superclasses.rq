@@ -1,0 +1,12 @@
+# Schema / superclasses: the named direct superclasses of the classes in %CLASSES%, as stated in the locx ontology
+#   or in UniProt core (owl:Thing left out).
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+PREFIX owl: <http://www.w3.org/2002/07/owl#>
+SELECT DISTINCT ?class ?super
+WHERE {
+  VALUES ?class { %CLASSES% }
+  { GRAPH <urn:locx:graph:ontology> { ?class rdfs:subClassOf ?super } }
+  UNION
+  { GRAPH <urn:locx:graph:uniprot-core> { ?class rdfs:subClassOf ?super } }
+  FILTER (isIRI(?super) && ?super != owl:Thing)
+}

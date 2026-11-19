@@ -1,0 +1,11 @@
+# Schema / outside ranges: GO and ECO classes that the locx ontology uses as ranges (the root that every location
+#   or evidence individual's class lies under), with their labels from the GO and ECO releases.
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+SELECT DISTINCT ?range ?label
+WHERE {
+  GRAPH <urn:locx:graph:ontology> { ?p rdfs:range ?range }
+  FILTER (STRSTARTS(STR(?range), "http://purl.obolibrary.org/obo/GO_") ||
+          STRSTARTS(STR(?range), "http://purl.obolibrary.org/obo/ECO_"))
+  OPTIONAL { { GRAPH <urn:locx:graph:go> { ?range rdfs:label ?label } }
+             UNION { GRAPH <urn:locx:graph:eco> { ?range rdfs:label ?label } } }
+}

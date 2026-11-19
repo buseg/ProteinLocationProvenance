@@ -1,10 +1,10 @@
 """Draw the knowledge graph schema from reports/kg_schema.json (scripts/kg_schema.py):
 
 - reports/fig_kg_<part>.png/.svg for four parts of the graph (papers, claims, curation, uniprot): classes as boxes,
-  links between them as arrows, coloured by the named graph that stores the link; each box gives an example IRI and
-  how many fields each graph adds. Individuals typed with a class of an outside ontology (a location: a GO class; an
+  links between them as arrows, coloured by the named graph that stores the link; each box gives the class's
+  superclass (from the locx ontology or UniProt core) and how many fields each graph adds. Individuals typed with a class of an outside ontology (a location: a GO class; an
   evidence: an ECO class) are linked to that class with a dashed "is a" arrow (slides).
-- reports/fig_kg_schema.png/.svg: one card per class with every field and what it points to (report).
+- reports/fig_kg_schema.png/.svg: one card per class with its superclass, every field and what it points to (report).
 
 Box positions are layout only (PARTS below); classes, fields, links and graphs all come from the JSON.
 """
@@ -37,15 +37,16 @@ NAME = {"fabio:JournalArticle": "Paper", "foaf:Person": "Person", "locx:Authorsh
         "locx:CorpusBuilding": "Corpus building", "locx:ExtractionRun": "Extraction run",
         "locx:SupportComputation": "Support computation", "locx:VerdictComputation": "Verdict computation",
         "locx:GOAContext": "GOA context", "locx:ContextPart": "Context part",
-        "locx:FreeTextContext": "Free-text context", "GO class individual": "Location (an individual)",
-        "ECO class individual": "Evidence (an individual)", "up:Structured_Name": "Protein names",
+        "locx:FreeTextContext": "Free-text context", "GO class individual": "Location",
+        "ECO class individual": "Evidence", "up:Structured_Name": "Protein names",
         "up:Resource": "GeneID link", "up:Attribution": "Evidence attribution", "up:Journal_Citation": "Citation",
         "UniProt located-in node": "Located-in node"}
 # the four parts: title, box centres (inches, 4 columns x 3 rows on a 17.6 x 10 canvas), outside classes drawn as
 # extra boxes, and "is a" links from individuals to them
 C1, C2, C3, C4, R1, R2, R3 = 1.9, 6.4, 10.9, 15.4, 8.4, 5.0, 1.5
-GO_BOX = ("GO term", "a class of GO (graph go)", "obo:GO_0005634 (nucleus)")
-ECO_BOX = ("ECO term", "a class of ECO (graph eco)", "obo:ECO_0000314 (direct assay ...)")
+# third line: the root class the term lies under (looked up as for the individuals of that kind), or a fixed text
+GO_BOX = ("GO term", "a class of GO (graph go)", "GO class individual")
+ECO_BOX = ("ECO term", "a class of ECO (graph eco)", "ECO class individual")
 PARTS = {
     "papers": ("Papers, people and the corpus", {
         "locx:CorpusBuilding": (C1, R1), "prov:Collection": (C2, R1), "fabio:JournalArticle": (C3, R1),
@@ -69,16 +70,51 @@ PARTS = {
         "up:Subcellular_Location_Annotation": (C2, R2), "UniProt located-in node": (C3, R2),
         "rdf:Statement": (C2, R3), "up:Attribution": (C1, R2), "up:Journal_Citation": (C1, R3)},
         {"UniProt location term": ((C4, R2), ("UniProt location term", "graph uniprot-locations",
-                                                                        "uplocation:191 (exactMatch GO)"))},
+                                                                        "linked to GO by skos:exactMatch"))},
         [("UniProt located-in node", "UniProt location term", "cellularComponent")]),
 }
 W_IN, H_IN = 17.6, 10.0
 BW = 3.0
 MONO = "DejaVu Sans Mono"
+# where an outside class's superclasses would be stated, for classes whose ontology we do not load
+SOURCE = {"fabio": "FaBiO", "foaf": "FOAF", "oa": "W3C OA", "c4o": "C4O", "prov": "PROV-O"}
+ROOTS = {}                                          # filled by load(): individual kind -> its GO / ECO root class
+SUPERS = {}                                         # filled by load(): class -> its named superclasses
+INDIVIDUAL_OF = {"GO class individual": "a GO class", "ECO class individual": "an ECO class"}
+SUBTITLE = {**{k: "instance of " + v for k, v in INDIVIDUAL_OF.items()}, "UniProt located-in node": "no rdf:type"}
+
+
+def curie(name):
+    return name.replace("obo:", "").replace("_", ":", 1) if name.startswith("obo:") else name
+
+
+def root_text(kind):
+    r = ROOTS.get(kind)
+    return f"under {curie(r['class'])} {r['label'].replace('_', ' ')}" if r else ""
+
+
+def super_line(c):
+    """One line naming the class's superclass, or where it would be stated."""
+    if c in INDIVIDUAL_OF:
+        return root_text(c)
+    if c == "UniProt located-in node":
+        return "UniProt gives these nodes no class"
+    if SUPERS.get(c):
+        return "subclass of " + ", ".join(SUPERS[c])
+    prefix = c.split(":", 1)[0]
+    if prefix == "locx":
+        return "top-level class of locx"
+    if prefix == "up":
+        return "no superclass in UniProt core"
+    if prefix == "rdf":
+        return "built-in RDF class"
+    return f"superclass in {SOURCE.get(prefix, prefix)}, not loaded"
 
 
 def load():
     s = json.loads((REPORTS / "kg_schema.json").read_text())
+    SUPERS.update(s.get("superclasses", {}))
+    ROOTS.update(s.get("individual_roots", {}))
     classes = {}                                    # class -> {"home": graph, "example": iri, "parts": [(graph, fields)]}
     for g in s["graphs"]:
         for c in g["classes"]:
@@ -135,10 +171,11 @@ def overview(classes, title, pos, extra_boxes, extra_links):
         top = y + h / 2
         ax.text(x - BW / 2 + 0.22, top - 0.2, f"{NAME.get(c, c)}", fontsize=12, weight="bold", color=INK,
                 va="center", zorder=5)
-        ax.text(x - BW / 2 + 0.22, top - 0.44, c, fontsize=8.4, color=MUTED, va="center", zorder=5)
-        ex = k["example"] or ""
-        ax.text(x - BW / 2 + 0.22, top - 0.66, ex if len(ex) <= 39 else ex[:38] + "…", fontsize=7.4,
-                family=MONO, color=INK2, va="center", zorder=5)
+        ax.text(x - BW / 2 + 0.22, top - 0.44, SUBTITLE.get(c, c),
+                fontsize=8.4, color=MUTED, va="center", zorder=5)
+        sup = super_line(c)
+        ax.text(x - BW / 2 + 0.22, top - 0.66, sup if len(sup) <= 39 else sup[:38] + "…", fontsize=7.6,
+                color=INK2, va="center", zorder=5)
         for i, (g, fields) in enumerate(k["parts"]):
             yy = top - 0.92 - 0.24 * i
             ax.add_patch(Rectangle((x - BW / 2 + 0.22, yy - 0.06), 0.12, 0.12, fc=GRAPH_COLOR.get(g, MUTED),
@@ -155,7 +192,7 @@ def overview(classes, title, pos, extra_boxes, extra_links):
         top = y + h / 2
         ax.text(x - BW / 2 + 0.22, top - 0.2, label, fontsize=12, weight="bold", color=INK, va="center", zorder=5)
         ax.text(x - BW / 2 + 0.22, top - 0.44, sub, fontsize=8.4, color=MUTED, va="center", zorder=5)
-        ax.text(x - BW / 2 + 0.22, top - 0.66, ex, fontsize=7.4, family=MONO, color=INK2, va="center", zorder=5)
+        ax.text(x - BW / 2 + 0.22, top - 0.66, root_text(ex) or ex, fontsize=7.6, color=INK2, va="center", zorder=5)
 
     def anchor(c, toward):
         x0, y0, w, h = rect[c]
@@ -231,12 +268,13 @@ def card_rows(fields):
     out = []
     for f in fields:
         rng = f["range"][0]
-        typ = f"→ {NAME.get(rng, rng)}" if ":" in rng and not rng.startswith(("xsd", "text")) else rng
+        typ = f"→ {NAME.get(rng, rng)}" if (":" in rng and not rng.startswith(("xsd", "text"))) or rng in NAME else rng
         if "values" in f and rng in ("IRI", "boolean") and len(f["values"]) <= 6:   # a small fixed set: list it
             typ = " | ".join(v.split(":", 1)[-1] for v in f["values"])
         if len(f["range"]) > 1:
             typ += " / " + " / ".join(f["range"][1:])
-        out.append((f["predicate"], typ if len(typ) <= 34 else typ[:33] + "…"))
+        room = min(34, int((4.3 - 0.067 * len(f["predicate"])) / 0.09))   # characters left after the field name
+        out.append((f["predicate"], typ if len(typ) <= room else typ[:room - 1] + "…"))
     return out
 
 
@@ -274,9 +312,10 @@ def cards(classes):
         ax.add_patch(Rectangle((x, y), 0.09, h, fc=GRAPH_COLOR.get(k["home"], MUTED), ec="none"))
         ax.text(x + 0.22, y + 0.24, NAME.get(c, c), fontsize=12, weight="bold", color=INK, va="center")
         title = NAME.get(c, c)
-        if title != c and 0.14 * len(title) + 0.075 * len(c) < W - 0.45:   # class name at the right, if it fits
-            ax.text(x + W - 0.12, y + 0.24, c, fontsize=8.5, color=MUTED, va="center", ha="right")
-        ax.text(x + 0.22, y + 0.5, k["example"] or "", fontsize=7.6, family=MONO, color=INK2, va="center")
+        right = SUBTITLE.get(c, c)
+        if title != c and 0.14 * len(title) + 0.075 * len(right) < W - 0.45:   # class name at the right, if it fits
+            ax.text(x + W - 0.12, y + 0.24, right, fontsize=8.5, color=MUTED, va="center", ha="right")
+        ax.text(x + 0.22, y + 0.5, super_line(c), fontsize=8.0, color=INK2, va="center")
         yy = y + 0.75
         for g, fields in k["parts"]:
             ax.add_patch(Rectangle((x + 0.22, yy + 0.03), 0.13, 0.13, fc=GRAPH_COLOR.get(g, MUTED), ec="none"))

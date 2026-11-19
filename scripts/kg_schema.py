@@ -208,6 +208,23 @@ ABOUT = {
 }
 
 
+def superclasses(graphs: list[dict]) -> dict:
+    """The named superclasses of every class in the schema (from the locx ontology and UniProt core), and for the
+    location and evidence individuals the GO / ECO root class their class lies under (the ontology's ranges)."""
+    names = sorted({c["class"] for g in graphs for c in g["classes"]} - set(BUCKETS.values()) - {"(untyped)"})
+    full = {next(ns + n[len(p):] for ns, p in PREFIXES.items() if n.startswith(p)): n
+            for n in names if any(n.startswith(p) for p in PREFIXES.values())}
+    supers = {n: [] for n in names}
+    for r in rows(q("schema_superclasses.rq", CLASSES=" ".join(f"<{i}>" for i in full))):
+        supers[full[r["class"]["value"]]].append(short(r["super"]["value"]))
+    roots = {}
+    for r in rows(q("schema_outside_ranges.rq")):
+        for ns, name in BUCKETS.items():
+            if r["range"]["value"].startswith(ns):
+                roots[name] = {"class": short(r["range"]["value"]), "label": r.get("label", {}).get("value", "")}
+    return {"superclasses": {n: sorted(s) for n, s in supers.items()}, "individual_roots": roots}
+
+
 def main():
     manifest = json.loads((RDF / "loaded.json").read_text())
     graphs = []
@@ -223,7 +240,7 @@ def main():
         s.update(name=key, triples=info["triples"], about=ABOUT.get(key, ""))
         graphs.append(s)
         print(f"[schema]   {len(s['classes'])} classes, {sum(len(c['fields']) for c in s['classes'])} fields")
-    schema = {"run_id": CFG["extract"]["main_run"], "graphs": graphs}
+    schema = {"run_id": CFG["extract"]["main_run"], "graphs": graphs, **superclasses(graphs)}
     (REPORTS / "kg_schema.json").write_text(json.dumps(schema, indent=1))
     (REPORTS / "kg_schema.md").write_text(markdown(schema))
     print(f"[schema] -> {REPORTS / 'kg_schema.json'}, {REPORTS / 'kg_schema.md'}")
