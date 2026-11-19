@@ -2,9 +2,11 @@
 
 - reports/fig_kg_<part>.png/.svg for four parts of the graph (papers, claims, curation, uniprot): classes as boxes,
   links between them as arrows, coloured by the named graph that stores the link; each box gives the class's
-  superclass (from the locx ontology or UniProt core) and how many fields each graph adds. Individuals typed with a class of an outside ontology (a location: a GO class; an
+  superclass when our graphs state one (locx ontology, UniProt core, GO / ECO root) and how many fields each graph adds. Individuals typed with a class of an outside ontology (a location: a GO class; an
   evidence: an ECO class) are linked to that class with a dashed "is a" arrow (slides).
-- reports/fig_kg_schema.png/.svg: one card per class with its superclass, every field and what it points to (report).
+- reports/fig_kg_schema.png/.svg: one section per named graph (in pipeline order), with a card per class that has fields
+  there: its superclass (when stated), then the fields that point to resources, a dashed line, the fields with literal
+  values (report).
 
 Box positions are layout only (PARTS below); classes, fields, links and graphs all come from the JSON.
 """
@@ -76,8 +78,6 @@ PARTS = {
 W_IN, H_IN = 17.6, 10.0
 BW = 3.0
 MONO = "DejaVu Sans Mono"
-# where an outside class's superclasses would be stated, for classes whose ontology we do not load
-SOURCE = {"fabio": "FaBiO", "foaf": "FOAF", "oa": "W3C OA", "c4o": "C4O", "prov": "PROV-O"}
 ROOTS = {}                                          # filled by load(): individual kind -> its GO / ECO root class
 SUPERS = {}                                         # filled by load(): class -> its named superclasses
 INDIVIDUAL_OF = {"GO class individual": "a GO class", "ECO class individual": "an ECO class"}
@@ -94,21 +94,11 @@ def root_text(kind):
 
 
 def super_line(c):
-    """One line naming the class's superclass, or where it would be stated."""
+    """The class's superclass as stated in our graphs (locx ontology, UniProt core, or the GO / ECO root that the
+    ontology gives as range for location and evidence individuals); "" when none is stated there."""
     if c in INDIVIDUAL_OF:
         return root_text(c)
-    if c == "UniProt located-in node":
-        return "UniProt gives these nodes no class"
-    if SUPERS.get(c):
-        return "subclass of " + ", ".join(SUPERS[c])
-    prefix = c.split(":", 1)[0]
-    if prefix == "locx":
-        return "top-level class of locx"
-    if prefix == "up":
-        return "no superclass in UniProt core"
-    if prefix == "rdf":
-        return "built-in RDF class"
-    return f"superclass in {SOURCE.get(prefix, prefix)}, not loaded"
+    return "subclass of " + ", ".join(SUPERS[c]) if SUPERS.get(c) else ""
 
 
 def load():
@@ -145,8 +135,8 @@ def links(classes):
     return out
 
 
-def box_h(k):
-    return 0.88 + 0.24 * len(k["parts"])
+def box_h(c, k):
+    return (0.88 if super_line(c) else 0.66) + 0.24 * len(k["parts"])
 
 
 def overview(classes, title, pos, extra_boxes, extra_links):
@@ -162,7 +152,7 @@ def overview(classes, title, pos, extra_boxes, extra_links):
     rect = {}
     for c, k in classes.items():
         x, y = POS[c]
-        h = box_h(k)
+        h = box_h(c, k)
         rect[c] = (x - BW / 2, y - h / 2, BW, h)
         ax.add_patch(FancyBboxPatch((x - BW / 2, y - h / 2), BW, h, boxstyle="round,pad=0,rounding_size=0.08",
                                     fc="white", ec=LINE, lw=1.2, zorder=3))
@@ -174,10 +164,11 @@ def overview(classes, title, pos, extra_boxes, extra_links):
         ax.text(x - BW / 2 + 0.22, top - 0.44, SUBTITLE.get(c, c),
                 fontsize=8.4, color=MUTED, va="center", zorder=5)
         sup = super_line(c)
-        ax.text(x - BW / 2 + 0.22, top - 0.66, sup if len(sup) <= 39 else sup[:38] + "…", fontsize=7.6,
-                color=INK2, va="center", zorder=5)
+        if sup:
+            ax.text(x - BW / 2 + 0.22, top - 0.66, sup if len(sup) <= 39 else sup[:38] + "…", fontsize=7.6,
+                    color=INK2, va="center", zorder=5)
         for i, (g, fields) in enumerate(k["parts"]):
-            yy = top - 0.92 - 0.24 * i
+            yy = top - (0.92 if sup else 0.70) - 0.24 * i
             ax.add_patch(Rectangle((x - BW / 2 + 0.22, yy - 0.06), 0.12, 0.12, fc=GRAPH_COLOR.get(g, MUTED),
                                    ec="none", zorder=5))
             ax.text(x - BW / 2 + 0.42, yy, f"{g}: {len(fields)} field{'s' if len(fields) != 1 else ''}",
@@ -264,75 +255,129 @@ def overview(classes, title, pos, extra_boxes, extra_links):
     return fig
 
 
+# literal kinds as kg_schema.py names them (xsd datatype without prefix, or text@lang): data fields; the rest point to
+# resources (classes, outside terms, IRIs)
+LITERAL = {"string", "integer", "decimal", "double", "float", "boolean", "date", "dateTime", "gYear", "gYearMonth",
+           "nonNegativeInteger", "anyURI", "rdf:langString"}
+GRAPH_ORDER = ["papers", "abstracts", "run", "assertions", "support", "verdicts", "goa-human", "uniprot-human"]
+
+
+def is_literal(f):
+    return f["range"][0] in LITERAL or f["range"][0].startswith("text@")
+
+
+def card_row(f):
+    rng = f["range"][0]
+    typ = f"→ {NAME.get(rng, rng)}" if not is_literal(f) else rng
+    if "values" in f and rng in ("IRI", "boolean") and len(f["values"]) <= 6:   # a small fixed set: list it
+        typ = " | ".join(v.split(":", 1)[-1] for v in f["values"])
+    if len(f["range"]) > 1:
+        typ += " / " + " / ".join(NAME.get(r, r) for r in f["range"][1:])
+    room = min(34, int((4.3 - 0.067 * len(f["predicate"])) / 0.09))   # characters left after the field name
+    return f["predicate"], typ if len(typ) <= room else typ[:room - 1] + "…"
+
+
 def card_rows(fields):
-    out = []
-    for f in fields:
-        rng = f["range"][0]
-        typ = f"→ {NAME.get(rng, rng)}" if (":" in rng and not rng.startswith(("xsd", "text"))) or rng in NAME else rng
-        if "values" in f and rng in ("IRI", "boolean") and len(f["values"]) <= 6:   # a small fixed set: list it
-            typ = " | ".join(v.split(":", 1)[-1] for v in f["values"])
-        if len(f["range"]) > 1:
-            typ += " / " + " / ".join(f["range"][1:])
-        room = min(34, int((4.3 - 0.067 * len(f["predicate"])) / 0.09))   # characters left after the field name
-        out.append((f["predicate"], typ if len(typ) <= room else typ[:room - 1] + "…"))
+    """Fields pointing to resources, then None (the dashed divider, if both kinds exist), then literal fields; each
+    group alphabetical."""
+    obj = [card_row(f) for f in sorted(fields, key=lambda f: f["predicate"]) if not is_literal(f)]
+    lit = [card_row(f) for f in sorted(fields, key=lambda f: f["predicate"]) if is_literal(f)]
+    return obj + ([None] if obj and lit else []) + lit
+
+
+def sections(schema, classes):
+    """[(graph, about, [(class, fields)])]: a class is listed under every graph that gives it fields; a class with no
+    fields anywhere (only typed) under the first graph, in pipeline order, that types it."""
+    order = ["locx:CorpusBuilding", "prov:Collection", "fabio:JournalArticle", "fabio:Journal", "fabio:Abstract",
+             "locx:Authorship", "foaf:Person", "foaf:Organization", "c4o:GlobalCitationCount",
+             "c4o:BibliographicInformationSource", "locx:ExtractionRun", "prov:SoftwareAgent", "locx:Claim",
+             "oa:SpecificResource", "oa:TextPositionSelector", "oa:TextQuoteSelector", "locx:FreeTextContext",
+             "locx:Assertion", "GO class individual", "locx:SupportComputation", "locx:Support", "locx:AuthorGroup",
+             "locx:VerdictComputation", "locx:Verdict", "locx:CuratedAnnotation", "locx:GOAContext", "locx:ContextPart",
+             "ECO class individual", "prov:Entity", "up:Protein", "up:Gene", "up:Structured_Name", "up:Resource",
+             "up:Subcellular_Location_Annotation", "UniProt located-in node", "rdf:Statement", "up:Attribution"]
+    rank = {c: i for i, c in enumerate(order)}
+    graphs = {g["name"]: g for g in schema["graphs"]}
+    placed, out = set(), []
+    for name in [g for g in GRAPH_ORDER if g in graphs] + [g for g in graphs if g not in GRAPH_ORDER]:
+        cards = []
+        for c in graphs[name]["classes"]:
+            key = "UniProt located-in node" if c["class"] == "(untyped)" and name == "uniprot-human" else c["class"]
+            if c["fields"] or (c["typed_here"] and not any(f for _, f in classes[key]["parts"]) and key not in placed):
+                cards.append((key, [{**f, "range": ["UniProt located-in node" if r == "(untyped)" else r
+                                                     for r in f["range"]]} for f in c["fields"]]))
+                placed.add(key)
+        cards.sort(key=lambda kc: (rank.get(kc[0], len(rank)), kc[0]))
+        out.append((name, graphs[name].get("about", ""), cards))
     return out
 
 
-def cards(classes):
-    order = ["fabio:JournalArticle", "locx:Authorship", "foaf:Person", "locx:Claim", "oa:SpecificResource",
-             "locx:FreeTextContext", "locx:CorpusBuilding", "locx:ExtractionRun", "prov:SoftwareAgent", "locx:Assertion",
-             "locx:Support", "locx:AuthorGroup", "locx:Verdict", "locx:SupportComputation", "locx:VerdictComputation",
-             "locx:CuratedAnnotation", "locx:GOAContext", "locx:ContextPart", "up:Protein", "GO class individual",
-             "ECO class individual"]
-    order = [c for c in order if c in classes] + [c for c in classes if c not in order]
-    W, RH, GAP, COLS = 5.0, 0.205, 0.35, 4
-    cols = [0.0] * COLS
-    placed = []
-    for c in order:
-        k = classes[c]
-        n = sum(len(f) + 1 for _, f in k["parts"]) or 1
-        h = 0.75 + RH * n
-        i = cols.index(min(cols))
-        placed.append((c, i, cols[i], h))
-        cols[i] += h + GAP
-    H = max(cols) + 0.9
-    fig, ax = plt.subplots(figsize=(COLS * (W + 0.3) + 0.3, H))
+def cards(schema, classes):
+    W, RH, GAP, COLS, X0 = 5.0, 0.205, 0.3, 4, 0.3
+    secs = sections(schema, classes)
+
+    def card_h(c, fields):
+        rows = card_rows(fields)
+        return (0.62 if super_line(c) else 0.42) + sum(RH * (0.6 if r is None else 1) for r in rows) + 0.12
+
+    layout, y = [], 0.8                              # (kind, ...) items with absolute positions
+    for g, about, cs in secs:
+        layout.append(("head", g, about, y))
+        y += 0.55
+        for i in range(0, len(cs), COLS):
+            row = cs[i:i + COLS]
+            hs = [card_h(c, f) for c, f in row]
+            for j, ((c, f), h) in enumerate(zip(row, hs)):
+                layout.append(("card", g, c, f, X0 + j * (W + GAP), y, h))
+            y += max(hs) + GAP
+        y += 0.25
+    H = y + 0.2
+    WT = X0 * 2 + COLS * W + (COLS - 1) * GAP
+    fig, ax = plt.subplots(figsize=(WT, H))
     fig.set_facecolor(SURFACE)
-    ax.set_xlim(0, COLS * (W + 0.3) + 0.3)
+    ax.set_xlim(0, WT)
     ax.set_ylim(H, 0)
     ax.axis("off")
-    ax.text(0.3, 0.35, "locx knowledge graph: every class and its fields, grouped by the named graph that stores them",
+    ax.text(X0, 0.35, "locx knowledge graph: every class and its fields, by the named graph that stores them",
             fontsize=15, color=INK, va="center")
-    for c, i, y, h in placed:
-        k = classes[c]
-        x = 0.3 + i * (W + 0.3)
-        y += 0.8
+    for item in layout:
+        if item[0] == "head":
+            _, g, about, y = item
+            ax.add_patch(Rectangle((X0, y + 0.1), 0.2, 0.2, fc=GRAPH_COLOR.get(g, MUTED), ec="none"))
+            name = ax.text(X0 + 0.32, y + 0.2, g, fontsize=13, weight="bold", color=INK, va="center")
+            ax.annotate(about, xy=(1, 0.5), xycoords=name, xytext=(10, 0), textcoords="offset points",
+                        fontsize=9, color=INK2, va="center")
+            continue
+        _, g, c, fields, x, y, h = item
         ax.add_patch(FancyBboxPatch((x, y), W, h, boxstyle="round,pad=0,rounding_size=0.06", fc="white", ec=LINE,
                                     lw=1.1))
-        ax.add_patch(Rectangle((x, y), 0.09, h, fc=GRAPH_COLOR.get(k["home"], MUTED), ec="none"))
-        ax.text(x + 0.22, y + 0.24, NAME.get(c, c), fontsize=12, weight="bold", color=INK, va="center")
+        ax.add_patch(Rectangle((x, y), 0.09, h, fc=GRAPH_COLOR.get(g, MUTED), ec="none"))
         title = NAME.get(c, c)
+        ax.text(x + 0.22, y + 0.24, title, fontsize=12, weight="bold", color=INK, va="center")
         right = SUBTITLE.get(c, c)
         if title != c and 0.14 * len(title) + 0.075 * len(right) < W - 0.45:   # class name at the right, if it fits
             ax.text(x + W - 0.12, y + 0.24, right, fontsize=8.5, color=MUTED, va="center", ha="right")
-        ax.text(x + 0.22, y + 0.5, super_line(c), fontsize=8.0, color=INK2, va="center")
-        yy = y + 0.75
-        for g, fields in k["parts"]:
-            ax.add_patch(Rectangle((x + 0.22, yy + 0.03), 0.13, 0.13, fc=GRAPH_COLOR.get(g, MUTED), ec="none"))
-            ax.text(x + 0.42, yy + 0.095, f"in {g}", fontsize=8.4, color=INK2, va="center", style="italic")
+        sup = super_line(c)
+        if sup:
+            ax.text(x + 0.22, y + 0.5, sup, fontsize=8.0, color=INK2, va="center")
+        yy = y + (0.62 if sup else 0.42)
+        for r in card_rows(fields):
+            if r is None:                            # resources above, literal values below
+                ax.plot([x + 0.42, x + W - 0.12], [yy + RH * 0.3] * 2, color=LINE, lw=1.0, ls=(0, (4, 3)))
+                yy += RH * 0.6
+                continue
+            pred, typ = r
+            ax.text(x + 0.42, yy + 0.095, pred, fontsize=7.9, family=MONO, color=INK, va="center")
+            ax.text(x + W - 0.12, yy + 0.095, typ, fontsize=7.9, color=INK2, va="center", ha="right")
             yy += RH
-            for pred, typ in card_rows(fields):
-                ax.text(x + 0.42, yy + 0.095, pred, fontsize=7.9, family=MONO, color=INK, va="center")
-                ax.text(x + W - 0.12, yy + 0.095, typ, fontsize=7.9, color=INK2, va="center", ha="right")
-                yy += RH
     return fig
 
 
 def main():
-    _, classes = load()
+    schema, classes = load()
     figs = [(f"fig_kg_{key}", overview(classes, title, pos, boxes, extra))
             for key, (title, pos, boxes, extra) in PARTS.items()]
-    for name, fig in figs + [("fig_kg_schema", cards(classes))]:
+    for name, fig in figs + [("fig_kg_schema", cards(schema, classes))]:
         for ext in ("png", "svg"):
             fig.savefig(REPORTS / f"{name}.{ext}", dpi=170, facecolor=SURFACE, bbox_inches="tight")
         plt.close(fig)
