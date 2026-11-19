@@ -201,7 +201,7 @@ def assertion_detail():
         au, qau, sau = cached("assertion_authors", k)
         authors = defaultdict(list)
         for x in au:
-            p = x["person"]
+            p = x.get("orcid") or x.get("person", "")
             name = html.escape(x["name"])
             authors[x["paper"]].append(f"<a href='{p}' target='_blank'>{name}</a>" if p.startswith("https://orcid.org/") else name)
         by_m = {}
@@ -219,8 +219,8 @@ def assertion_detail():
                         f"<small><a href='{PUBMED}{pmid}/' target='_blank'>PMID {pmid}</a> · <i>{html.escape(m['title'])}</i> "
                         f"{html.escape(m.get('journal', ''))} ({m.get('year', '?')}) · cited {m.get('citations', '?')}×<br>"
                         f"{', '.join(authors.get(m['paper'], [])[:8])}{' et al.' if len(authors.get(m['paper'], [])) > 8 else ''}<br>"
-                        f"{vname(m['sourceType']).lower()}, {vname(m['certainty']).lower()} · method: {m['method']} · "
-                        f"organism: {m['organism']}{' · cell type: ' + html.escape(m['cellType']) if m.get('cellType') else ''}"
+                        f"{vname(m['sourceType']).lower()}, {vname(m['certainty']).lower()} · method: {m.get('method', 'not stated')} · "
+                        f"organism: {m.get('organism', 'not stated')}{' · cell type: ' + html.escape(m['cellType']) if m.get('cellType') else ''}"
                         f"{' · condition: ' + html.escape('; '.join(sorted(c for c in m['conditions'] if c))) if any(m['conditions']) else ''}"
                         f" · author group: <code>{html.escape(D.local(m.get('group', '') or '–'))}</code>"
                         f"{' · warnings: ' + ', '.join(sorted(f for f in m['flags'] if f)) if any(m['flags']) else ''}"

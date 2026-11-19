@@ -7,7 +7,7 @@ PREFIX foaf:    <http://xmlns.com/foaf/0.1/>
 SELECT ?run ?label ?started ?ended ?promptVersion ?promptSha ?schema ?temperature ?model ?servedBy
 WHERE {
   GRAPH <%RUN_GRAPH%> {
-    ?run a prov:Activity ; rdfs:label ?label ; prov:startedAtTime ?started ;
+    ?run a locx:ExtractionRun ; rdfs:label ?label ; prov:startedAtTime ?started ;
          locx:promptVersion ?promptVersion ; locx:promptSha256 ?promptSha ;
          locx:schemaVersion ?schema ; locx:temperature ?temperature ;
          prov:wasAssociatedWith ?agent .

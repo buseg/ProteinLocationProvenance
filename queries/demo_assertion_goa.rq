@@ -1,14 +1,21 @@
-# Demo / Assertion detail and Conflicts: the GOA rows behind the verdict
-PREFIX locx:    <http://example.org/locx/>
-PREFIX prov:    <http://www.w3.org/ns/prov#>
-PREFIX dcterms: <http://purl.org/dc/terms/>
-PREFIX rdfs:    <http://www.w3.org/2000/01/rdf-schema#>
-PREFIX foaf:    <http://xmlns.com/foaf/0.1/>
-SELECT ?label ?qualifier ?negated ?evidence ?source ?assignedBy
+# Demo / Assertion detail: the GOA rows behind the verdict (locx:goaMatch), with RO / ECO labels and the GO evidence
+# category of each row
+PREFIX rdf:      <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+PREFIX locx:     <http://example.org/locx/>
+PREFIX dcterms:  <http://purl.org/dc/terms/>
+PREFIX rdfs:     <http://www.w3.org/2000/01/rdf-schema#>
+PREFIX foaf:     <http://xmlns.com/foaf/0.1/>
+SELECT ?label ?qualifier ?negated ?evidence ?evGroup ?source ?assignedBy
 WHERE {
-  GRAPH <urn:locx:graph:verdicts>  { <%ASSERTION%> locx:goaMatch ?g . }
-  GRAPH <urn:locx:graph:goa-human> { ?g locx:location ?t ; locx:qualifier ?qualifier ; locx:negated ?negated ;
-                                        locx:evidenceCode ?evidence .
-                                     OPTIONAL { ?g dcterms:source ?source } OPTIONAL { ?g locx:assignedBy ?assignedBy } }
-  GRAPH <urn:locx:graph:go-cc>     { ?t rdfs:label ?label . }
+  GRAPH <urn:locx:graph:verdicts>  { ?vd locx:about <%ASSERTION%> ; locx:goaMatch ?g . }
+  GRAPH <urn:locx:graph:goa-human> { ?g locx:location/rdf:type ?t ; locx:relation ?rel ; locx:polarity ?pol ; locx:evidence/rdf:type ?eco .
+                                     OPTIONAL { ?g dcterms:source ?source }
+                                     OPTIONAL { ?g locx:assignedBy/foaf:name ?assignedBy } }
+  GRAPH <urn:locx:graph:ro>        { ?rel rdfs:label ?qualifier . }       # RO's label, e.g. "located in"
+  GRAPH <urn:locx:graph:eco>       { ?eco rdfs:label ?evidence . }        # ECO's label
+  OPTIONAL { GRAPH <urn:locx:graph:ontology> { ?category locx:ecoRoot ?root ; locx:token ?evGroup .
+    FILTER NOT EXISTS { ?category locx:ecoExcludedRoot ?x . GRAPH <urn:locx:graph:eco> { ?eco rdfs:subClassOf* ?x } } }
+    GRAPH <urn:locx:graph:eco> { ?eco rdfs:subClassOf* ?root } }   # GO evidence category (ECO hierarchy + locx ontology)
+  BIND (?pol = locx:Absent AS ?negated)
+  GRAPH <urn:locx:graph:go>        { ?t rdfs:label ?label . }
 }

@@ -1,17 +1,23 @@
-# Demo / Errors: invalid mentions with one flag (%FLAG%), with the sentence and what the model chose.
-# The 200 mentions are picked first (subquery), then joined to the labels, which keeps it fast.
-PREFIX locx:    <http://example.org/locx/>
-PREFIX prov:    <http://www.w3.org/ns/prov#>
-PREFIX rdfs:    <http://www.w3.org/2000/01/rdf-schema#>
+# Demo / Errors: invalid claims with one flag (%FLAG% = the flag's token), with the sentence and what the model chose.
+# The 200 claims are picked first (subquery), then joined to the labels, which keeps it fast.
+PREFIX rdf:      <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+PREFIX locx:     <http://example.org/locx/>
+PREFIX prov:     <http://www.w3.org/ns/prov#>
+PREFIX rdfs:     <http://www.w3.org/2000/01/rdf-schema#>
+PREFIX skos:     <http://www.w3.org/2004/02/skos/core#>
+PREFIX up:       <http://purl.uniprot.org/core/>
+PREFIX oa:       <http://www.w3.org/ns/oa#>
 SELECT ?m ?paper ?symbol ?label ?otherText ?polarity ?sentenceId ?sentence
 WHERE {
-  { SELECT ?m WHERE { GRAPH <%RUN_GRAPH%> { ?m locx:flag "%FLAG%" ; locx:valid false . } } LIMIT 200 }
+  { SELECT ?m WHERE { GRAPH <%RUN_GRAPH%> { ?m locx:flag ?f ; locx:valid false . }
+                      GRAPH <urn:locx:graph:ontology> { ?f locx:token "%FLAG%" } } LIMIT 200 }
   GRAPH <%RUN_GRAPH%> {
-    ?m locx:protein ?protein ; locx:polarity ?polarity ; prov:wasDerivedFrom ?paper ;
-       locx:sentenceId ?sentenceId ; locx:sentenceText ?sentence .
+    ?m locx:protein ?protein ; locx:polarity ?polarity ; prov:wasDerivedFrom ?paper ; locx:sentenceId ?sentenceId .
+    ?m locx:evidenceSentence/oa:hasSelector/oa:exact ?sentence .
     OPTIONAL { ?m locx:otherLocationText ?otherText }
   }
-  GRAPH <urn:locx:graph:uniprot-human> { ?protein locx:geneSymbol ?symbol . }
+  { SELECT ?protein (MIN(?s) AS ?symbol) WHERE {   # gene symbol (UniProt: up:encodedBy -> skos:prefLabel)
+      GRAPH <urn:locx:graph:uniprot-human> { ?protein up:encodedBy/skos:prefLabel ?s . } } GROUP BY ?protein }
   # term and label in one OPTIONAL: an unbound ?term must not match every GO label
-  OPTIONAL { GRAPH <%RUN_GRAPH%> { ?m locx:location ?term . } GRAPH <urn:locx:graph:go-cc> { ?term rdfs:label ?label . } }
+  OPTIONAL { GRAPH <%RUN_GRAPH%> { ?m locx:location/rdf:type ?term . } GRAPH <urn:locx:graph:go> { ?term rdfs:label ?label . } }
 }

@@ -1,20 +1,21 @@
 # Demo / Cell map, translocations, network: every valid claim about one protein, with its paper, condition and
-#   cell type (%PROTEIN% = UniProt IRI). One row per claim and condition.
-PREFIX locx:    <http://example.org/locx/>
-PREFIX prov:    <http://www.w3.org/ns/prov#>
-PREFIX dcterms: <http://purl.org/dc/terms/>
+# cell type (%PROTEIN% = UniProt IRI). Conditions and cell types are the claim's free-text contexts
+# (locx:FreeTextContext, told apart by locx:contextKind). One row per claim and condition.
+PREFIX rdf:      <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+PREFIX locx:     <http://example.org/locx/>
+PREFIX prov:     <http://www.w3.org/ns/prov#>
+PREFIX dcterms:  <http://purl.org/dc/terms/>
+PREFIX c4o:      <http://purl.org/spar/c4o/>
+PREFIX oa:       <http://www.w3.org/ns/oa#>
 SELECT ?a ?term ?polarity ?m ?paper ?year ?title ?citations ?sourceType ?condition ?cellType ?sentence ?group
 WHERE {
-  GRAPH <urn:locx:graph:assertions> { ?a locx:protein <%PROTEIN%> ; locx:location ?term ; locx:polarity ?polarity . }
+  GRAPH <urn:locx:graph:assertions> { ?a locx:protein <%PROTEIN%> ; locx:location/rdf:type ?term ; locx:polarity ?polarity . }
   GRAPH <%RUN_GRAPH%> {
-    ?m locx:asserts ?a ; locx:valid true ; prov:wasDerivedFrom ?paper ; locx:sourceType ?sourceType ;
-       locx:sentenceText ?sentence .
-    OPTIONAL { ?m locx:condition ?condition }
-    OPTIONAL { ?m locx:cellType ?cellType }
+    ?m locx:asserts ?a ; locx:valid true ; prov:wasDerivedFrom ?paper ; locx:sourceType ?sourceType .
+    ?m locx:evidenceSentence/oa:hasSelector/oa:exact ?sentence .
+    OPTIONAL { ?m locx:hasContext ?cc . ?cc locx:contextKind locx:ConditionText ; locx:contextText ?condition }
+    OPTIONAL { ?m locx:hasContext ?ct . ?ct locx:contextKind locx:CellTypeText ; locx:contextText ?cellType }
   }
-  OPTIONAL { GRAPH <urn:locx:graph:verdicts> { ?m locx:authorGroup ?group } }
-  GRAPH <urn:locx:graph:papers> {
-    ?paper dcterms:title ?title .
-    OPTIONAL { ?paper locx:year ?year } OPTIONAL { ?paper locx:citedByCount ?citations }
-  }
+  OPTIONAL { GRAPH <urn:locx:graph:support> { ?group locx:about ?a ; locx:includesPaper ?paper } }
+  GRAPH <urn:locx:graph:papers> { ?paper dcterms:title ?title . OPTIONAL { ?paper dcterms:date ?date } BIND (YEAR(?date) AS ?year) OPTIONAL { ?paper c4o:hasGlobalCitationFrequency/c4o:hasGlobalCountValue ?citations } }
 }

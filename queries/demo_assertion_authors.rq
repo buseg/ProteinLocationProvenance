@@ -1,13 +1,18 @@
-# Demo / Assertion detail: authors of the supporting papers (ORCID IRIs where known)
-PREFIX locx:    <http://example.org/locx/>
-PREFIX prov:    <http://www.w3.org/ns/prov#>
-PREFIX dcterms: <http://purl.org/dc/terms/>
-PREFIX rdfs:    <http://www.w3.org/2000/01/rdf-schema#>
-PREFIX foaf:    <http://xmlns.com/foaf/0.1/>
-SELECT ?paper ?position ?name ?person
+# Demo / Assertion detail: authors of the backing papers. ?key = the person (OpenAlex author, reasoner-merged by
+# ORCID); authors OpenAlex could not identify fall back to their printed name.
+PREFIX locx:     <http://example.org/locx/>
+PREFIX prov:     <http://www.w3.org/ns/prov#>
+PREFIX owl:      <http://www.w3.org/2002/07/owl#>
+SELECT ?paper ?position ?name ?person ?orcid (MIN(?k) AS ?key)
 WHERE {
   GRAPH <%RUN_GRAPH%>           { ?m locx:asserts <%ASSERTION%> ; locx:valid true ; prov:wasDerivedFrom ?paper . }
-  GRAPH <urn:locx:graph:papers> { ?paper locx:hasAuthorship ?s . ?s locx:position ?position ; locx:author ?person .
-                                  ?person foaf:name ?name . }
+  GRAPH <urn:locx:graph:papers> { ?paper locx:hasAuthorship ?s . ?s locx:position ?position ; locx:authorName ?name .
+                                  OPTIONAL { ?s locx:author ?person . OPTIONAL { ?person locx:orcid ?orcid } } }
+  # one identity per person: the OpenAlex author, or the smallest IRI the reasoner merged it with (shared ORCID);
+  # authors OpenAlex could not identify fall back to their printed name
+  OPTIONAL { GRAPH <urn:locx:graph:papers> { ?s locx:author ?p1 } GRAPH <urn:locx:graph:inferred> { ?p1 owl:sameAs ?same } }
+  BIND (IF(BOUND(?person), IF(BOUND(?same) && STR(?same) < STR(?person), STR(?same), STR(?person)),
+           CONCAT("name:", STR(?name))) AS ?k)
 }
+GROUP BY ?paper ?position ?name ?person ?orcid
 ORDER BY ?paper ?position

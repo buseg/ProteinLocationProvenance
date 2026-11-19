@@ -1,12 +1,13 @@
-# Demo / Home: papers in the corpus (papers graph), by tier, plus the distinct papers in silver or discovery
-#   (a paper can be in both tiers, so the per-tier counts do not add up)
-PREFIX locx:    <http://example.org/locx/>
-PREFIX dcterms: <http://purl.org/dc/terms/>
+# Demo / Home: papers per corpus sample (PROV collections in the papers graph), plus the distinct papers in silver or
+# discovery (a paper can be in both, so the per-sample counts do not add up)
+PREFIX locx:     <http://example.org/locx/>
+PREFIX prov:     <http://www.w3.org/ns/prov#>
 SELECT ?tier (COUNT(DISTINCT ?paper) AS ?papers)
 WHERE {
-  { GRAPH <urn:locx:graph:papers> { ?paper dcterms:title ?t ; locx:tier ?tier . } }
+  { GRAPH <urn:locx:graph:papers> { ?c a prov:Collection ; prov:hadMember ?paper . }
+    BIND (REPLACE(STR(?c), "^.*/corpus/", "") AS ?tier) }
   UNION
-  { GRAPH <urn:locx:graph:papers> { ?paper dcterms:title ?t ; locx:tier ?x . FILTER (?x IN ("silver", "discovery")) }
+  { GRAPH <urn:locx:graph:papers> { ?c prov:hadMember ?paper . FILTER (?c IN (<http://example.org/locx/corpus/silver>, <http://example.org/locx/corpus/discovery>)) }
     BIND ("silver_or_discovery" AS ?tier) }
 }
 GROUP BY ?tier

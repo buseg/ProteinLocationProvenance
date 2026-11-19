@@ -1,13 +1,16 @@
-# Demo / Graph neighborhood: direct is_a / part_of parents of a set of GO terms (%TERMS% = VALUES list of GO IRIs)
-PREFIX obo:  <http://purl.obolibrary.org/obo/>
-PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+# Demo / Graph neighborhood: direct is_a / part_of parents of a set of GO terms (%TERMS% = VALUES list of GO IRIs).
+# In the official GO, part_of is an OWL restriction: rdfs:subClassOf [owl:onProperty part_of ; owl:someValuesFrom X].
+PREFIX locx:     <http://example.org/locx/>
+PREFIX rdfs:     <http://www.w3.org/2000/01/rdf-schema#>
+PREFIX owl:      <http://www.w3.org/2002/07/owl#>
+PREFIX obo:      <http://purl.obolibrary.org/obo/>
 SELECT ?child ?relation ?parent ?parentLabel
 WHERE {
   VALUES ?child { %TERMS% }
-  GRAPH <urn:locx:graph:go-cc> {
-    { ?child rdfs:subClassOf ?parent . BIND("is_a" AS ?relation) }
+  GRAPH <urn:locx:graph:go> {
+    { ?child rdfs:subClassOf ?parent . FILTER isIRI(?parent) BIND("is_a" AS ?relation) }
     UNION
-    { ?child obo:BFO_0000050 ?parent . BIND("part_of" AS ?relation) }
+    { ?child rdfs:subClassOf [ owl:onProperty obo:BFO_0000050 ; owl:someValuesFrom ?parent ] . BIND("part_of" AS ?relation) }
     ?parent rdfs:label ?parentLabel .
   }
 }

@@ -1,26 +1,33 @@
-# Demo / Assertion detail: every valid mention of the assertion with its paper and author group
-PREFIX locx:    <http://example.org/locx/>
-PREFIX prov:    <http://www.w3.org/ns/prov#>
-PREFIX dcterms: <http://purl.org/dc/terms/>
-PREFIX rdfs:    <http://www.w3.org/2000/01/rdf-schema#>
-PREFIX foaf:    <http://xmlns.com/foaf/0.1/>
+# Demo / Assertion detail: every valid claim of the assertion with its sentence (Web Annotation quote), paper,
+# author group (support graph), its free-text contexts (condition, cell type) and the labels of its values (locx ontology)
+PREFIX rdfs:     <http://www.w3.org/2000/01/rdf-schema#>
+PREFIX locx:     <http://example.org/locx/>
+PREFIX prov:     <http://www.w3.org/ns/prov#>
+PREFIX dcterms:  <http://purl.org/dc/terms/>
+PREFIX frbr:     <http://purl.org/vocab/frbr/core#>
+PREFIX prism:    <http://prismstandard.org/namespaces/basic/2.0/>
+PREFIX c4o:      <http://purl.org/spar/c4o/>
+PREFIX oa:       <http://www.w3.org/ns/oa#>
 SELECT ?m ?paper ?sentence ?sentenceId ?proteinMention ?locationMention ?certainty ?sourceType ?method
        ?organism ?cellType ?condition ?group ?title ?journal ?year ?citations ?doi ?flag
 WHERE {
   GRAPH <%RUN_GRAPH%> {
-    ?m locx:asserts <%ASSERTION%> ; locx:valid true ; prov:wasDerivedFrom ?paper ;
-       locx:sentenceText ?sentence ; locx:sentenceId ?sentenceId ; locx:certainty ?certainty ;
-       locx:sourceType ?sourceType ; locx:method ?method ; locx:organism ?organism .
+    ?m locx:asserts <%ASSERTION%> ; locx:valid true ; prov:wasDerivedFrom ?paper ; locx:sentenceId ?sentenceId ;
+       locx:certainty ?certainty ; locx:sourceType ?sourceType ; locx:method ?methodValue ; locx:organism ?organismValue .
+    ?m locx:evidenceSentence/oa:hasSelector/oa:exact ?sentence .
     OPTIONAL { ?m locx:proteinMention ?proteinMention }
     OPTIONAL { ?m locx:locationMention ?locationMention }
-    OPTIONAL { ?m locx:cellType ?cellType }
-    OPTIONAL { ?m locx:condition ?condition }
-    OPTIONAL { ?m locx:flag ?flag }
+    OPTIONAL { ?m locx:hasContext ?ct . ?ct locx:contextKind locx:CellTypeText ; locx:contextText ?cellType }
+    OPTIONAL { ?m locx:hasContext ?cc . ?cc locx:contextKind locx:ConditionText ; locx:contextText ?condition }
   }
-  OPTIONAL { GRAPH <urn:locx:graph:verdicts> { ?m locx:authorGroup ?group } }
+  # labels of our values; "not stated" values are left out
+  OPTIONAL { GRAPH <urn:locx:graph:ontology> { ?methodValue rdfs:label ?method . FILTER (?methodValue != locx:MethodNotStated) } }
+  OPTIONAL { GRAPH <urn:locx:graph:ontology> { ?organismValue rdfs:label ?organism . FILTER (?organismValue != locx:OrganismNotStated) } }
+  OPTIONAL { GRAPH <%RUN_GRAPH%> { ?m locx:flag ?flagValue } GRAPH <urn:locx:graph:ontology> { ?flagValue rdfs:label ?flag } }
+  OPTIONAL { GRAPH <urn:locx:graph:support> { ?group locx:about <%ASSERTION%> ; locx:includesPaper ?paper } }
   GRAPH <urn:locx:graph:papers> {
     ?paper dcterms:title ?title .
-    OPTIONAL { ?paper locx:journal ?journal } OPTIONAL { ?paper locx:year ?year }
-    OPTIONAL { ?paper locx:citedByCount ?citations } OPTIONAL { ?paper locx:doi ?doi }
+    OPTIONAL { ?paper frbr:partOf/dcterms:title ?journal } OPTIONAL { ?paper dcterms:date ?date } BIND (YEAR(?date) AS ?year)
+    OPTIONAL { ?paper c4o:hasGlobalCitationFrequency/c4o:hasGlobalCountValue ?citations } OPTIONAL { ?paper prism:doi ?doi }
   }
 }

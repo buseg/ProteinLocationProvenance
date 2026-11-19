@@ -1,17 +1,30 @@
-# Demo / Provenance graph: GOA rows linked to one assertion, with the kind of link
-#   same = same GO term, narrower = curated term below the paper's, broader = curated term above it
-PREFIX locx:    <http://example.org/locx/>
-PREFIX dcterms: <http://purl.org/dc/terms/>
-PREFIX rdfs:    <http://www.w3.org/2000/01/rdf-schema#>
-SELECT ?link ?t ?label ?qualifier ?negated ?evidence ?source ?assignedBy
+# Demo / Provenance graph: every GOA row linked to the assertion (same term, narrower, broader), with the parts of its
+# contexts (locx:GOAContext: an RO relation and a term, e.g. part of CL:0000540). One row per GOA row and context part.
+PREFIX rdf:      <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+PREFIX locx:     <http://example.org/locx/>
+PREFIX dcterms:  <http://purl.org/dc/terms/>
+PREFIX rdfs:     <http://www.w3.org/2000/01/rdf-schema#>
+PREFIX foaf:     <http://xmlns.com/foaf/0.1/>
+SELECT ?link ?t ?label ?qualifier ?negated ?evidence ?evGroup ?source ?assignedBy ?context ?contextRelation ?contextTerm ?contextTermLabel
 WHERE {
   GRAPH <urn:locx:graph:verdicts> {
-    { <%ASSERTION%> locx:goaSame ?g .     BIND("same" AS ?link) } UNION
-    { <%ASSERTION%> locx:goaNarrower ?g . BIND("narrower" AS ?link) } UNION
-    { <%ASSERTION%> locx:goaBroader ?g .  BIND("broader" AS ?link) }
+    ?vd locx:about <%ASSERTION%> .
+    { ?vd locx:goaSame ?g .     BIND("same" AS ?link) } UNION
+    { ?vd locx:goaNarrower ?g . BIND("narrower" AS ?link) } UNION
+    { ?vd locx:goaBroader ?g .  BIND("broader" AS ?link) }
   }
-  GRAPH <urn:locx:graph:goa-human> { ?g locx:location ?t ; locx:qualifier ?qualifier ; locx:negated ?negated ;
-                                        locx:evidenceCode ?evidence .
-                                     OPTIONAL { ?g dcterms:source ?source } OPTIONAL { ?g locx:assignedBy ?assignedBy } }
-  GRAPH <urn:locx:graph:go-cc>     { ?t rdfs:label ?label . }
+  GRAPH <urn:locx:graph:goa-human> { ?g locx:location/rdf:type ?t ; locx:relation ?rel ; locx:polarity ?pol ; locx:evidence/rdf:type ?eco .
+                                     OPTIONAL { ?g dcterms:source ?source }
+                                     OPTIONAL { ?g locx:assignedBy/foaf:name ?assignedBy } }
+  GRAPH <urn:locx:graph:ro>        { ?rel rdfs:label ?qualifier . }       # RO's label, e.g. "located in"
+  GRAPH <urn:locx:graph:eco>       { ?eco rdfs:label ?evidence . }        # ECO's label
+  OPTIONAL { GRAPH <urn:locx:graph:ontology> { ?category locx:ecoRoot ?root ; locx:token ?evGroup .
+    FILTER NOT EXISTS { ?category locx:ecoExcludedRoot ?x . GRAPH <urn:locx:graph:eco> { ?eco rdfs:subClassOf* ?x } } }
+    GRAPH <urn:locx:graph:eco> { ?eco rdfs:subClassOf* ?root } }   # GO evidence category (ECO hierarchy + locx ontology)
+  OPTIONAL { GRAPH <urn:locx:graph:goa-human> { ?g locx:hasContext ?context . ?context locx:contextPart ?part .
+                                                ?part locx:contextRelation ?crel ; locx:contextTerm ?contextTerm }
+             GRAPH <urn:locx:graph:ro> { ?crel rdfs:label ?contextRelation }
+             OPTIONAL { GRAPH <urn:locx:graph:go> { ?contextTerm rdfs:label ?contextTermLabel } } }   # GO terms have labels here
+  BIND (?pol = locx:Absent AS ?negated)
+  GRAPH <urn:locx:graph:go>        { ?t rdfs:label ?label . }
 }

@@ -23,6 +23,7 @@ from locx.config import CFG, DATA, INTERIM, QUERIES, REPORTS  # noqa: E402
 from locx.io import read_jsonl  # noqa: E402
 from locx.kg import fuseki  # noqa: E402
 from locx.kg.ttl import LOCX  # noqa: E402
+from locx import ontology as O  # noqa: E402
 
 RUNS = DATA / "runs"
 G = CFG["graphs"]
@@ -141,22 +142,33 @@ def figures(verdicts, claims, stats_rows, silver):
 NEXT_STEPS = [
     "**Full-text articles** (open-access PMC / Europe PMC, BioC): GOA curators read full texts, so abstracts cap silver "
     "recall (ceiling in §6); section-aware chunking (results, figure legends) and longer contexts.",
-    "**Author disambiguation** (OpenAlex author IDs, institutions): the name-key rule (last name + initial, ≥ 2 shared) "
-    "chains unrelated labs through very common keys (e.g. Wang Y, Zhang Y); weight rare names, or require a shared "
-    "ORCID / institution for common ones.",
-    "**Context-aware verdicts**: use the stated condition and cell type (context-dependent count in §5); "
-    "the demo's translocation view (baseline place → place under a condition) is a first, heuristic step.",
+    "**Author disambiguation beyond OpenAlex**: author groups now join papers that share an OpenAlex person (or an "
+    "ORCID); OpenAlex itself sometimes splits one person or merges two, so check common names against institutions "
+    "(ROR) and co-authors.",
+    "**Grounded contexts (a second pass over the round-1 outputs)**: the conditions and cell types the model wrote "
+    "are free text (`locx:FreeTextContext`), while GOA states its contexts as an RO relation plus a term "
+    "(`locx:GOAContext`, e.g. *part of* CL neuron). A second pass, without re-running extraction, would ground "
+    "each distinct context text: a dictionary proposes candidate terms from GO biological process, CL, Cellosaurus, "
+    "UBERON and ChEBI, and the local model, shown the sentence, picks a candidate ID (it never writes one), the "
+    "relation, and whether the text is a context at all (e.g. 'phosphorylated' is a protein state, not a "
+    "condition). The result becomes the same context parts GOA uses, recorded as its own activity. A second model "
+    "would judge a sample to measure the quality. Then claims and GOA rows with the same location can be compared "
+    "under the same context, and context-dependent conflicts (§5) told apart from real ones.",
     "**Remaining name errors**: viral and other non-human proteins with human gene symbols (HIV-1 Tat → TAT), and "
     "triggers credited with the movement they cause (TNF → NF-κB); extend the synonym layer with an organism / "
     "'not a human protein' reading and a 'who moves' check.",
     "**Evidence-aware curation suggestions**: rank the upgrade candidates (literature support for GOA rows without "
-    "experimental evidence) and conflicts with weak GOA evidence for curators; export them as nanopublications with "
+    "experimental evidence) and conflicts with weak GOA evidence for curators; export them with their "
     "provenance.",
     "**Qualifier-aware verdicts**: GOA's 'NOT is_active_in' is not 'NOT located_in' (e.g. nuclear PD-L1); only "
     "NOT located_in rows should make a conflict, others a softer flag.",
     "**Organism-aware evidence**: use the per-claim organism field to mark claims from animal studies as weaker, "
     "orthology-like evidence for the human protein (like GOA's ISO code); check the field against PubTator's "
     "species annotations first, since nothing verifies it yet and about half of the claims state no organism.",
+    "**Better grounding of free-text locations**: some OTHER texts the validator cannot ground have GO terms "
+    "(e.g. primary cilia, basal body, intermembrane space, invadopodia; `other_ungrounded_top` in "
+    "`reports/validation_<run>.json`); handle plurals and variants, add missing synonyms, and re-validate to win "
+    "these claims back.",
     "**Validator-in-the-loop repair** (multi-round), and its effect on precision.",
     "**A second model** (e.g. Qwen3.6-35B-A3B or Gemma 4 E4B) on the same corpus; agreement as a confidence signal.",
     "**Human Protein Atlas** as a second reference; **orthology mapping** for mouse / rat studies.",
@@ -284,8 +296,9 @@ def main():
         if r["pmid"] in cands:
             raw[r["pmid"]] = r
     rc = [cl for r in raw.values() if r["status"] == "ok" for cl in r["claims"]]
-    graphs = {g: fuseki.count(g) for g in [G["go_cc"], G["goa"], G["uniprot"], G["papers"], G["assertions"],
-                                            G["run_prefix"] + rid, G["verdicts"]]}
+    graphs = {g: fuseki.count(g) for g in [G["ontology"], G["go"], G["eco"], G["ro"], G["uniprot_locations"], G["uniprot_core"],
+                                            G["goa"], G["uniprot"], G["papers"], G["abstracts"], G["assertions"],
+                                            G["run_prefix"] + rid, G["support"], G["verdicts"], G["inferred"]]}
     fig_files = figures(ver, claims, stats, silver)
 
     md = [f"# locx progress statistics", "",
@@ -294,12 +307,58 @@ def main():
           f"{json.loads((RUNS / rid / 'run.json').read_text())['model']}).", ""]
 
     md += ["## 1. Knowledge graph", ""]
-    md += table(["named graph", "triples"], [[f"`{g}`", f"{n:,}"] for g, n in graphs.items()])
+    kind = {G["ontology"]: "our ontology", G["go"]: "ontology (official release)", G["eco"]: "ontology (official release)",
+            G["ro"]: "ontology (official release)", G["uniprot_locations"]: "vocabulary (UniProt, as published)",
+            G["uniprot_core"]: "ontology (UniProt core, as published)",
+            G["support"]: "derived (support process)", G["verdicts"]: "derived (verdict process)",
+            G["inferred"]: "derived (OWL 2 RL reasoner)"}
+    md += table(["named graph", "kind", "triples"], [[f"`{g}`", kind.get(g, "data"), f"{n:,}"] for g, n in graphs.items()])
     gc, ga, gu = kg["go_cc"], kg["goa_human_cc"], kg["uniprot_human"]
+    rel = kg.get("releases", {})
     md += ["", f"GO {gc['go_data_version']}: {gc['cc_terms']:,} CC terms ({gc['is_a_edges']:,} is_a, {gc['part_of_edges']:,} part_of; "
            f"{gc['non_human_terms']} non-human). GOA human: {ga['cc_rows']:,} CC rows, {ga['not_rows']} NOT rows, "
-           f"{ga['proteins']:,} proteins, {ga['distinct_pmids']:,} cited PMIDs. UniProt human Swiss-Prot: {gu['entries']:,} entries "
-           f"({gu['with_gene_id']:,} with an NCBI GeneID). GO CC dictionary: {gc['dictionary_texts']:,} surface texts.", ""]
+           f"{ga['proteins']:,} proteins, {ga['distinct_pmids']:,} cited PMIDs. UniProt human Swiss-Prot (UniProt RDF, `up:` "
+           f"vocabulary): {gu['proteins']:,} proteins, {gu['proteins_with_location_annotation']:,} with a subcellular location "
+           f"annotation. Official releases loaded unmodified: {', '.join(f'`{v}`' for v in rel.values() if v)}. "
+           f"GOA evidence as ECO terms, relations as RO terms; {ga.get('context_parts', 0):,} GOA context parts "
+           f"(relation + term) parsed. GO CC dictionary: {gc['dictionary_texts']:,} surface texts. Data model: `docs/DATA_MODEL.md`.", ""]
+    if (REPORTS / "kg_schema.json").exists():      # make schema (scripts/kg_schema.py, kg_schema_fig.py)
+        sch = json.loads((REPORTS / "kg_schema.json").read_text())
+        home, extra = {}, defaultdict(list)
+        for g in sch["graphs"]:
+            for c in g["classes"]:
+                if c["typed_here"]:
+                    home[c["class"]] = (g["name"], c["example_subject"], len(c["fields"]))
+                elif c["fields"]:
+                    extra[c["class"]].append(f"{len(c['fields'])} in {g['name']}")
+        md += ["**Schema** (read from the live data; every field with type and example in `kg_schema.md`; "
+               "figures `fig_kg_papers.png`, `fig_kg_claims.png`, `fig_kg_curation.png`, `fig_kg_uniprot.png`, "
+               "`fig_kg_schema.png`):", ""]
+        md += table(["class", "typed in", "fields", "example IRI"],
+                    [[f"`{c}`", g, f"{n}" + (" + " + ", ".join(extra[c]) if extra[c] else ""), f"`{ex}`"]
+                     for c, (g, ex, n) in home.items()])
+        md += [""]
+    if (REPORTS / "ontology.json").exists():       # make check-ontology (scripts/check_ontology.py)
+        on = json.loads((REPORTS / "ontology.json").read_text())
+        sm, hr = on["sample"], on.get("hermit") or {}
+        g = O.graph()
+        n_cls = sum(1 for s_ in g.subjects(O.expand("rdf:type"), O.expand("owl:Class")) if str(s_).startswith(str(O.LOCX)))
+        n_ind = sum(1 for _ in g.subjects(O.expand("rdf:type"), O.expand("owl:NamedIndividual")))
+        md += [f"**Ontology** (`ontology/locx.owl.ttl`, OWL 2, hand-maintained, the source of truth for the code; "
+               f"version {on['version']}): {n_cls} locx classes, {n_ind} named individuals (the values of the value sets: one OWL "
+               f"class with its individuals each). Coverage: {'every' if on['coverage_ok'] else 'NOT every'} class and predicate in "
+               f"our data graphs is declared; outside IDs checked: {len(on['outside_ids']['checked'])}, problems "
+               f"{len(on['outside_ids']['problems'])}. HermiT ({hr.get('imports', 'not run')}): "
+               f"{'consistent' if hr.get('consistent') else 'NOT consistent' if hr else 'not run'}, "
+               f"{len(hr.get('unsatisfiable_classes') or [])} unsatisfiable classes. Protégé sample {sm['symbol']} "
+               f"({sm['triples']:,} triples): {sm['triples_checked']:,} checked against domains, ranges, functional "
+               f"properties and disjoint classes, {sum(sm['problems'].values())} problems.", ""]
+    if (REPORTS / "reasoning.json").exists():      # make reason (scripts/reason.py)
+        rs = json.loads((REPORTS / "reasoning.json").read_text())
+        md += [f"**Reasoning** ({rs['reasoner']}): {rs['inferred_graph_triples']:,} inferred triples in "
+               f"`urn:locx:graph:inferred`; consistency checks over all data ("
+               + ", ".join(f"{k.replace('reason_', '').replace('_', ' ')} {v['violations']}" for k, v in rs["consistency"].items())
+               + f"): {'consistent' if rs['consistent'] else 'NOT consistent'}.", ""]
 
     md += ["## 2. Corpus", ""]
     rows = []
@@ -357,7 +416,7 @@ def main():
                   for f in ("impossible_location", "too_generic")]
     md += [f"{t['claims_raw']:,} raw claims → {t['claims']:,} after merging duplicates; {t.get('abstracts_bad_json', 0)} abstracts with bad JSON.", ""]
     md += table(["flag", "claims", "effect"], flag_rows)
-    md += ["", f"**Valid claims: {rdf['valid']:,} of {rdf['mentions']:,} ({pct(rdf['share_valid'])})**; "
+    md += ["", f"**Valid claims: {rdf['valid']:,} of {rdf['claims']:,} ({pct(rdf['share_valid'])})**; "
            + ", ".join(f"{k} {pct(v['share_valid'])}" for k, v in rdf["per_tier"].items())
            + f". SHACL gate shapes conform: {rdf['gate_conforms']}. Repair loop: not built (Later).", ""]
 
@@ -438,6 +497,8 @@ def main():
     md += table(["run", "purpose", "prompt", "requests", "wall h", "GPU h", "status"], rr)
     md += ["", f"Total GPU hours of finished sessions: **{total:.2f}** (RTX A6000; vLLM {json.loads((RUNS / rid / 'run.json').read_text())['vllm_version']}).", ""]
 
+    fig_files += [f for f in ("fig_kg_papers.png", "fig_kg_claims.png", "fig_kg_curation.png", "fig_kg_uniprot.png",
+                              "fig_kg_schema.png") if (REPORTS / f).exists()]   # make schema
     md += ["## 8. Figures", ""] + [f"![{f}]({f})" for f in fig_files] + [""]
     md += ["## 9. Worked examples (3 per verdict)", "",
            "Picked by a fixed rule: valid 'finding' mentions without coreference warnings, strongest support first "

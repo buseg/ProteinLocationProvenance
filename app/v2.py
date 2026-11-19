@@ -44,18 +44,38 @@ UNIPROT = "https://www.uniprot.org/uniprotkb/"
 
 # --- helpers -----------------------------------------------------------------------------------------
 @st.cache_data(ttl=3600, show_spinner=False)
-def cached(fn_name, *args):
+def _cached(fn_name, *args):
     return getattr(D, fn_name)(*args)
 
 
+def cached(fn_name, *args):
+    """Run (or reuse) one data query and record it for the "SPARQL behind this page" section."""
+    res = _cached(fn_name, *args)
+    if isinstance(res, tuple) and len(res) == 3 and isinstance(res[1], str) and res[1]:
+        log = st.session_state.setdefault("_page_queries", [])
+        if all(q != res[1] for _, _, q, _ in log):
+            log.append((fn_name, len(res[0]) if hasattr(res[0], "__len__") else 0, res[1], res[2]))
+    return res
+
+
 def sparql(*items):
-    """Show the SPARQL behind a panel when the sidebar toggle is on. items: (rows, query, seconds) tuples."""
-    if not st.session_state.get("show_sparql"):
+    """Kept for the pages that pass their query results; every query is listed at the bottom of the page."""
+    return
+
+
+def queries_footer():
+    """Every SPARQL query the page ran, in the order it ran, with its rows and time (from the first run; later
+    visits reuse the cached result)."""
+    log = st.session_state.get("_page_queries", [])
+    if not log:
         return
-    for rows, q, secs in items:
-        if q:
-            with st.expander(f"SPARQL · {len(rows) if hasattr(rows, '__len__') else ''} rows · {secs:.2f} s"):
-                st.code(q, language="sparql")
+    st.divider()
+    st.subheader("SPARQL behind this page")
+    st.caption(f"{len(log)} quer{'y' if len(log) == 1 else 'ies'} against Fuseki, each naming its graphs. The files are "
+               "in `queries/`.")
+    for fn, n, q, secs in log:
+        with st.expander(f"{fn.replace('_', ' ')} · {n:,} rows · {secs:.2f} s"):
+            st.code(q, language="sparql")
 
 
 def vname(iri):
@@ -120,7 +140,6 @@ def sidebar():
     with st.sidebar:
         st.markdown("### locx")
         st.caption("Protein localization claims from PubMed abstracts, with provenance, compared with GOA.")
-        st.toggle("Show SPARQL queries", key="show_sparql")
         run = cached("run_info")[0]
         if run:
             r = run[0]
@@ -260,9 +279,10 @@ def slim_text(slim, term):
     return ", ".join(slim.get(term, [])) or NO_SLIM
 
 
-def ev_text(codes):
-    """'Experimental (IDA, IPI); Electronic (IEA)': evidence groups, strongest first, with their codes."""
-    return "; ".join(f"{EV.LABEL.get(g, g)} ({', '.join(c)})" for g, c in EV.groups_of(codes).items())
+def ev_text(evidence):
+    """'experimental (direct assay evidence ...); electronic (...)': GO evidence categories, strongest first, with ECO's
+    labels. evidence = (ECO label, category) pairs."""
+    return "; ".join(f"{EV.LABEL.get(g, g)} ({', '.join(c)})" for g, c in EV.groups_of(evidence).items())
 
 
 def goa_summary(goa):
@@ -270,7 +290,7 @@ def goa_summary(goa):
     for g in goa:
         e = by[g["term"]]
         e["label"] = g["label"]
-        e["ev"].add(g["evidence"])
+        e["ev"].add((g["evidence"], g.get("evGroup", "")))
         e["not"] |= g["negated"] == "true"
         if g.get("source"):
             e["src"].add(g["source"])
@@ -391,8 +411,11 @@ def evidence_panel(key, acc):
     np_, ng_ = int(a["nPapers"]), int(a["nGroups"])
     st.caption(f"{VERDICT_HELP.get(verdict, '')}. {np_} paper{'s' * (np_ != 1)} from {ng_} independent author "
                f"group{'s' * (ng_ != 1)} · "
-               f"finding {a['nFinding']}, background {a['nBackground']}, hedged {a['nHedged']} · "
+               f"source: own finding in {a['nFinding']}, background in {a['nBackground']} · "
+               f"certainty: hedged in {a['nHedged']} (a finding can be hedged too) · "
                f"{a.get('yearFirst', '?')}–{a.get('yearLast', '?')}"
+               + (" · **context-dependent**: at least one paper states a condition (see the sentences)"
+                  if a.get("context") == "true" else "")
                + (" · **GOA curators cited one of these papers** (same paper, read independently)"
                   if a.get("sameAsGOA") == "true" else ""))
     b1, b2, _ = st.columns([1.2, 1.6, 3])
@@ -428,9 +451,8 @@ def evidence_panel(key, acc):
                 shown += 1
                 for m in by_paper[pp]:
                     pmid = D.local(m["paper"])
-                    meta = [vname(m.get("sourceType")).lower()]
-                    if vname(m.get("certainty")) == "Hedged":
-                        meta.append("hedged")
+                    meta = [vname(m.get("sourceType")).lower() + (", hedged" if vname(m.get("certainty")) == "Hedged"
+                                                                   else ", stated")]
                     meta += [x for x in (m.get("method"), m.get("organism"), m.get("cellType")) if x and x != "not_stated"]
                     if m["conditions"]:
                         meta.append("condition: " + "; ".join(sorted(m["conditions"])))
@@ -448,24 +470,31 @@ def evidence_panel(key, acc):
         g_res = cached("provenance_goa", key)
         st.markdown("**What curators say (GOA)**: rows along this location's lineage")
         if g_res[0]:
-            agg = defaultdict(lambda: {"ev": set(), "src": set(), "by": set()})
+            agg = defaultdict(lambda: {"ev": set(), "src": set(), "by": set(), "ctx": defaultdict(set)})
             for g in g_res[0]:
                 e = agg[(g["label"], {"same": "same term", "narrower": "more specific", "broader": "broader"}[g["link"]],
                          "NOT" if g["negated"] == "true" else "")]
-                e["ev"].add(g["evidence"])
+                e["ev"].add((g["evidence"], g.get("evGroup", "")))
                 if g.get("assignedBy"):
                     e["by"].add(g["assignedBy"])
                 if g.get("source") and "pubmed" in g["source"]:
                     e["src"].add(D.local(g["source"]))
+                if g.get("context"):   # a GOA context: its parts all hold together
+                    e["ctx"][g["context"]].add(f"{g['contextRelation']} {g.get('contextTermLabel') or D.curie(g['contextTerm'])}")
             mine = {D.local(m["paper"]) for m in mentions}
             gdf = pd.DataFrame([{"GOA term": k[0], "vs paper": k[1], "NOT": k[2],
                                  "strongest evidence": EV.LABEL.get(next(iter(EV.groups_of(v["ev"])), ""), ""),
-                                 "codes": ", ".join(sorted(v["ev"])), "by": ", ".join(sorted(v["by"])),
+                                 "ECO evidence": ", ".join(sorted(l for l, _ in v["ev"])), "by": ", ".join(sorted(v["by"])),
+                                 "context": " | ".join(sorted({" and ".join(sorted(p)) for p in v["ctx"].values()})),
                                  "cited papers": len(v["src"]), "also ours": len(v["src"] & mine)} for k, v in agg.items()])
             st.dataframe(gdf.sort_values(["vs paper", "cited papers"], ascending=[False, False]), hide_index=True,
                          width="stretch", column_config={
-                             "codes": st.column_config.TextColumn("codes", help=EV.code_title(set().union(*[v["ev"] for v in agg.values()]))),
+                             "ECO evidence": st.column_config.TextColumn("ECO evidence", help="evidence types from the Evidence & Conclusion Ontology"),
                              "by": st.column_config.TextColumn("by", help="database that made the annotation"),
+                             "context": st.column_config.TextColumn("context", help="where or when the GOA annotation holds "
+                                                                     "(GO's annotation extension): an RO relation and a term, "
+                                                                     "e.g. part of CL:0000540 (neuron); | separates alternatives. "
+                                                                     "The papers' conditions on the left are free text."),
                              "also ours": st.column_config.NumberColumn("also in our papers", help="GOA-cited papers that "
                                                                         "are also among this assertion's supporting papers")})
             st.markdown(EV.legend_html(), unsafe_allow_html=True)
@@ -513,83 +542,6 @@ def provenance_page():
     if st.button("Open this protein's profile"):
         open_assertion(key, acc)
     sparql(info, ms, au, goa, run)
-
-
-# --- Explore -----------------------------------------------------------------------------------------
-def explore():
-    st.title("Explore all assertions")
-    df, q, s = assertions_df()
-    c1, c2, c3 = st.columns([3, 1.4, 1.6])
-    verdicts = c1.pills("Verdict", D.VERDICTS, selection_mode="multi", default=["Novel", "Refinement", "Conflicting"])
-    pol = c2.segmented_control("Claim", ["present", "absent"], selection_mode="multi", default=["present", "absent"])
-    ymin, ymax = int(df["yearFirst"].min()), int(df["yearLast"].max())
-    yr = c3.slider("Published between", ymin, ymax, (ymin, ymax))
-    c4, c5, c6 = st.columns([1.6, 1.4, 3])
-    min_g = c4.slider("Min. independent author groups", 1, 20, 2)
-    ctx_free = c5.toggle("No condition stated", help="hide assertions where a supporting sentence names a condition "
-                                                     "(treatment, disease, stimulus) that could explain the location")
-    text = c6.text_input("Protein or location contains", placeholder="e.g. TFEB, lysosome")
-    c7, c8 = st.columns([4, 1.6])
-    evs = c7.pills("Strongest GOA evidence behind the verdict", [EV.LABEL[g] for g in EV.GROUPS] + ["none"],
-                   selection_mode="multi", default=None, help="Consistent, Refinement and Conflicting have GOA rows behind "
-                   "them; 'none' = Novel or Uninformative. Empty = all.")
-    same = c8.toggle("GOA cites one of the papers", help="GOA curators cited one of the supporting papers")
-    f = df[df["verdict"].isin(verdicts or []) & df["polarity"].isin(pol or []) & (df["nGroups"] >= min_g)
-           & (df["yearLast"] >= yr[0]) & (df["yearFirst"] <= yr[1])]
-    if ctx_free:
-        f = f[~f["context"]]
-    if evs:
-        keep = {g for g in EV.GROUPS if EV.LABEL[g] in evs} | ({""} if "none" in evs else set())
-        f = f[f["evidence"].isin(keep)]
-    if same:
-        f = f[f["samePaper"]]
-    if text:
-        t = text.strip().lower()
-        f = f[f["symbol"].str.lower().str.contains(t, regex=False) | f["label"].str.lower().str.contains(t, regex=False)]
-    f = f.sort_values(["nGroups", "nPapers"], ascending=False)
-    st.markdown(f"**{len(f):,}** of {len(df):,} assertions")
-    if f.empty:
-        return
-    left, right = st.columns([2, 3])
-    with left:
-        pts = f.head(3000).copy()
-        pts["what"] = pts["symbol"] + (pts["polarity"].eq("absent").map({True: " NOT", False: ""})) + " in " + pts["label"]
-        sel = alt.selection_point(fields=["key"], name="pick")
-        chart = alt.Chart(pts).transform_calculate(      # jitter on the log scale so equal counts do not hide each other
-            xj="datum.nPapers * (1 + 0.28 * (random() - 0.5))", yj="datum.nGroups * (1 + 0.28 * (random() - 0.5))"
-        ).mark_circle(opacity=0.7, stroke="#fcfcfb", strokeWidth=0.8).encode(
-            x=alt.X("xj:Q", scale=alt.Scale(type="log"), title="papers"),
-            y=alt.Y("yj:Q", scale=alt.Scale(type="log"), title="independent author groups"),
-            color=alt.Color("verdict:N", scale=alt.Scale(domain=D.VERDICTS, range=[COLOR[v] for v in D.VERDICTS]),
-                            legend=alt.Legend(orient="bottom", title=None, columns=3)),
-            size=alt.value(55),
-            tooltip=["what", "verdict", "nPapers", "nGroups", "yearFirst", "yearLast"],
-        ).add_params(sel).properties(height=420)
-        picked = st.altair_chart(chart, width="stretch", on_select="rerun", key="explore_chart")
-        st.caption("Click a point, then open it. Up and to the right = reported by many independent groups.")
-        pk = (picked or {}).get("selection", {}).get("pick") or []
-        if pk and (f["key"] == pk[0].get("key")).any():
-            r = f[f["key"] == pk[0]["key"]].iloc[0]
-            if st.button(f"Open {r['symbol']} in {r['label']}", type="primary", key="open_pt"):
-                open_assertion(r["key"], r["acc"])
-    with right:
-        show = f[["key", "acc", "symbol", "label", "polarity", "verdict", "evidence", "nGroups", "nPapers", "yearFirst",
-                  "yearLast", "context"]].head(1000).reset_index(drop=True)
-        show["evidence"] = show["evidence"].map(lambda g: EV.LABEL.get(g, ""))
-        ev = st.dataframe(show.drop(columns=["key", "acc"]).rename(columns={
-            "label": "location", "polarity": "claim", "evidence": "GOA evidence", "nGroups": "groups", "nPapers": "papers", "yearFirst": "first",
-            "yearLast": "last", "context": "condition"}).style.map(
-            lambda v: f"background-color: {COLOR.get(v, '#ffffff')}33" if v in COLOR else "", subset=["verdict"]),
-            hide_index=True, width="stretch", on_select="rerun", selection_mode="single-row", height=470,
-            column_config={"first": st.column_config.NumberColumn(format="%d"),
-                           "last": st.column_config.NumberColumn(format="%d")})
-        if ev and ev.selection.rows:
-            r = show.iloc[ev.selection.rows[0]]
-            if st.button(f"Open {r['symbol']} {'NOT ' if r['polarity'] == 'absent' else ''}in {r['label']}",
-                         type="primary", key="open_row"):
-                open_assertion(r["key"], r["acc"])
-        st.caption("Select a row, then open it (top 1,000 by independent groups).")
-    sparql((df, q, s))
 
 
 # --- Quality -----------------------------------------------------------------------------------------
@@ -782,3 +734,4 @@ else:
     nav = st.navigation({sec: [PAGES[k] for k in ks] for sec, ks in SECTIONS.items()}, position="top")
     sidebar()
     nav.run()
+queries_footer()

@@ -26,7 +26,9 @@ TOP = 150                            # header + run box
 GOA_H = 44
 
 INK, INK2, MUTED, LINE, CARD, BG = "#0b0b0b", "#52514e", "#8b8a85", "#c3c2b7", "#ffffff", "#fcfcfb"
-CERTAINTY = {"Finding": "#1baf7a", "Hedged": "#eda100", "Background": "#8b8a85"}
+SOURCE_COLOR = {"Finding": "#1baf7a", "Background": "#8b8a85"}   # source type (own finding / background)
+HEDGED_COLOR = "#eda100"                                          # certainty: an extra chip when hedged
+CTX_NOTE = " · <span title='at least one paper states a condition'>context-dependent</span>"
 LINK_SHORT = {"same": "same term", "narrower": "more specific", "broader": "broader"}
 LINK_TEXT = {"same": "same GO term", "narrower": "GOA term is more specific", "broader": "GOA term is broader"}
 
@@ -85,10 +87,10 @@ def author_groups(mentions, authors):
         names = {}
         for p in papers:
             for a in by_paper.get(p, []):
-                ids = {"key:" + a["key"]} | ({"orcid:" + a["person"]} if a["person"].startswith("https://orcid.org/") else set())
+                ids = {"key:" + a["key"]}   # the person: OpenAlex author, reasoner-merged by ORCID (queries)
                 for i in ids:
                     ident[i].add(p)
-                    names.setdefault(i, (a["name"], a["person"]))
+                    names.setdefault(i, (a["name"], a.get("orcid") or ""))
         link = []
         if len(papers) > 1:
             seen = set()
@@ -217,7 +219,7 @@ def build(a, mention_rows, authors, goa_rows, run, max_papers=12, colors=None, a
                     + (f"<br>linked by {linked}" if link else ""))
         else:
             au = sorted(groups_lookup(groups, g), key=lambda a: int(a["position"]))
-            lab = (person_html(au[0]["name"], au[0]["person"]) + (" … " + person_html(au[-1]["name"], au[-1]["person"])
+            lab = (person_html(au[0]["name"], au[0].get("orcid") or "") + (" … " + person_html(au[-1]["name"], au[-1].get("orcid") or "")
                    + " (last)" if len(au) > 1 else "")) if au else "authors unknown"
             head = f"<b>Author group {gi}</b> · 1 paper<br>{lab}"
         parts.append(f"<rect x='{X_PAPER}' y='{y}' width='{W_PAPER}' height='{box_h}' rx='10' fill='#f0efec' "
@@ -241,8 +243,8 @@ def build(a, mention_rows, authors, goa_rows, run, max_papers=12, colors=None, a
                 cond = "; ".join(sorted(m["conditions"]))
                 meta = " · ".join(x for x in [m.get("method"), m.get("organism"), m.get("cellType"),
                                               ("condition: " + cond) if cond else ""] if x and x != "not_stated")
-                chips = (f"<span class='chip' style='background:{CERTAINTY.get(src, MUTED)}'>{esc(src.lower())}</span>"
-                         + (f"<span class='chip' style='background:{CERTAINTY['Hedged']}'>hedged</span>" if hedged else ""))
+                chips = (f"<span class='chip' style='background:{SOURCE_COLOR.get(src, MUTED)}'>{esc(src.lower())}</span>"
+                         + (f"<span class='chip' style='background:{HEDGED_COLOR}'>hedged</span>" if hedged else ""))
                 inner = (f"<div class='s' title='{esc(m.get('sentence'))}'>{chips}"
                          f"{snippet(m.get('sentence'), m['marks'])}</div><div class='meta'>{esc(m.get('sentenceId'))}"
                          f"{' · ' + esc(meta) if meta else ''}</div>")
@@ -272,8 +274,9 @@ def build(a, mention_rows, authors, goa_rows, run, max_papers=12, colors=None, a
              + (f" &nbsp;{EV.badge(a.get('evidence'), small=True)}" if a.get("evidence") else "") + "</div>"
              f"<div style='margin-top:6px'>{esc(a.get('nPapers'))} papers · <b>{esc(a.get('nGroups'))} independent "
              f"author groups</b></div><div style='color:{INK2}'>finding {esc(a.get('nFinding'))} · background "
-             f"{esc(a.get('nBackground'))} · hedged {esc(a.get('nHedged'))}<br>{esc(a.get('yearFirst', '?'))}–"
-             f"{esc(a.get('yearLast', '?'))}{' · context-dependent' if a.get('context') == 'true' else ''}</div>")
+             f"{esc(a.get('nBackground'))} papers<br>hedged in {esc(a.get('nHedged'))}<br>{esc(a.get('yearFirst', '?'))}–"
+             f"{esc(a.get('yearLast', '?'))}"
+             f"{CTX_NOTE if a.get('context') == 'true' else ''}</div>")
     parts.append(fo(X_ASSERT, ay, W_ASSERT, ah, inner, "assert"))
     for cy in claim_pos:
         edges.append(edge(X_CLAIM + W_CLAIM, cy, X_ASSERT, ay + ah / 2, color="#d9d8d3"))
@@ -283,7 +286,7 @@ def build(a, mention_rows, authors, goa_rows, run, max_papers=12, colors=None, a
     for r in goa_rows:
         k = (r["link"], r["label"], r["negated"] == "true")
         e = gg.setdefault(k, {"ev": set(), "q": set(), "src": set(), "by": set()})
-        e["ev"].add(r["evidence"])
+        e["ev"].add((r["evidence"], r.get("evGroup", "")))
         e["q"].add(r["qualifier"])
         if r.get("source"):
             e["src"].add(r["source"])
@@ -306,7 +309,7 @@ def build(a, mention_rows, authors, goa_rows, run, max_papers=12, colors=None, a
         inner = (f"<div class='h' title='{esc(LINK_TEXT[link])}'>{'<span class=not>NOT</span> ' if neg else ''}"
                  f"<b>{esc(label)}</b> · <span style='color:{INK2}'>{esc(LINK_SHORT[link])}</span></div><div class='meta' "
                  f"title='{esc(EV.code_title(e['ev']))}'>{EV.badge(best, small=True)} "
-                 f"{esc(', '.join(sorted(e['ev'])))}{src_html} · {esc(', '.join(sorted(e['by']))[:30])}</div>")
+                 f"{esc(', '.join(sorted(l for l, _ in e['ev'])))}{src_html} · {esc(', '.join(sorted(e['by']))[:30])}</div>")
         parts.append(fo(X_GOA, gy, W_GOA, GOA_H, inner, "card goa"))
         edges.append(edge(X_ASSERT + W_ASSERT, ay + ah / 2, X_GOA, gy + GOA_H / 2,
                           color="#b3261e" if neg else INK2, dash=link != "same"))

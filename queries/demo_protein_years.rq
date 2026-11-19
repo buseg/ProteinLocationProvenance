@@ -1,10 +1,12 @@
 # Demo / Protein page: papers per publication year for each assertion of one protein (timeline column)
-PREFIX locx:    <http://example.org/locx/>
-PREFIX prov:    <http://www.w3.org/ns/prov#>
+PREFIX locx:     <http://example.org/locx/>
+PREFIX prov:     <http://www.w3.org/ns/prov#>
+PREFIX dcterms:  <http://purl.org/dc/terms/>
 SELECT ?a ?year (COUNT(DISTINCT ?paper) AS ?papers)
 WHERE {
   GRAPH <urn:locx:graph:assertions> { ?a locx:protein <%PROTEIN%> . }
   GRAPH <%RUN_GRAPH%>               { ?m locx:asserts ?a ; locx:valid true ; prov:wasDerivedFrom ?paper . }
-  GRAPH <urn:locx:graph:papers>     { ?paper locx:year ?year . }
+  GRAPH <urn:locx:graph:papers>     { ?paper dcterms:date ?date . }
+  BIND (YEAR(?date) AS ?year)
 }
 GROUP BY ?a ?year

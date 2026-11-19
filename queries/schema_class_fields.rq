@@ -1,0 +1,11 @@
+# Schema / fields of one class: every field of one instance of %CLASS% in %GRAPH%, for classes the predicate sample
+#   misses (e.g. institutions, whose foaf:name is rare among the persons' and journals' names in the papers graph).
+PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+PREFIX owl: <http://www.w3.org/2002/07/owl#>
+SELECT ?s ?p ?o (SAMPLE(?oa) AS ?oClass)
+WHERE {
+  { SELECT ?s WHERE { GRAPH <%GRAPH%> { ?s rdf:type <%CLASS%> } } LIMIT 1 }
+  GRAPH <%GRAPH%> { ?s ?p ?o FILTER (?p != rdf:type) }
+  OPTIONAL { GRAPH ?g { ?o rdf:type ?oa } FILTER (?g != <urn:locx:graph:inferred> && ?oa != owl:NamedIndividual) }
+}
+GROUP BY ?s ?p ?o

@@ -1,21 +1,23 @@
-# Demo / Conflicts: conflicting assertions with support counts, context flag and the opposing GOA rows
-PREFIX locx:    <http://example.org/locx/>
-PREFIX prov:    <http://www.w3.org/ns/prov#>
-PREFIX dcterms: <http://purl.org/dc/terms/>
-PREFIX rdfs:    <http://www.w3.org/2000/01/rdf-schema#>
-PREFIX foaf:    <http://xmlns.com/foaf/0.1/>
+# Demo / Conflicts: assertions whose verdict is Conflicting, with the GOA rows behind it (relation and evidence as RO
+# and ECO labels, from the official releases)
+PREFIX rdf:      <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+PREFIX locx:     <http://example.org/locx/>
+PREFIX rdfs:     <http://www.w3.org/2000/01/rdf-schema#>
+PREFIX skos:     <http://www.w3.org/2004/02/skos/core#>
+PREFIX up:       <http://purl.uniprot.org/core/>
 SELECT ?a ?symbol ?label ?polarity ?nGroups ?nPapers ?context
-       (GROUP_CONCAT(DISTINCT CONCAT(IF(?neg, "NOT ", ""), ?q, " ", ?glabel, " [", ?ev, "]"); separator="; ") AS ?goa)
+       (GROUP_CONCAT(DISTINCT CONCAT(IF(?gpol = locx:Absent, "NOT ", ""), ?q, " ", ?glabel, " [", ?ev, "]"); separator="; ") AS ?goa)
 WHERE {
-  GRAPH <urn:locx:graph:verdicts> {
-    ?a locx:verdict locx:Conflicting ; locx:nGroups ?nGroups ; locx:nPapers ?nPapers ; locx:goaMatch ?g .
-    OPTIONAL { ?a locx:contextDependent ?context }
-  }
-  GRAPH <urn:locx:graph:assertions>    { ?a locx:protein ?protein ; locx:location ?term ; locx:polarity ?polarity . }
-  GRAPH <urn:locx:graph:uniprot-human> { ?protein locx:geneSymbol ?symbol . }
-  GRAPH <urn:locx:graph:go-cc>         { ?term rdfs:label ?label . }
-  GRAPH <urn:locx:graph:goa-human>     { ?g locx:negated ?neg ; locx:qualifier ?q ; locx:evidenceCode ?ev ; locx:location ?gt . }
-  GRAPH <urn:locx:graph:go-cc>         { ?gt rdfs:label ?glabel . }
+  GRAPH <urn:locx:graph:verdicts>  { ?vd locx:about ?a ; locx:outcome locx:Conflicting ; locx:goaMatch ?g . }
+  GRAPH <urn:locx:graph:support>   { ?sp locx:about ?a ; locx:nGroups ?nGroups ; locx:nPapers ?nPapers ; locx:contextDependent ?context . }
+  GRAPH <urn:locx:graph:assertions> { ?a locx:protein ?protein ; locx:location/rdf:type ?term ; locx:polarity ?polarity . }
+  { SELECT ?protein (MIN(?s) AS ?symbol) WHERE {   # gene symbol (UniProt: up:encodedBy -> skos:prefLabel)
+      GRAPH <urn:locx:graph:uniprot-human> { ?protein up:encodedBy/skos:prefLabel ?s . } } GROUP BY ?protein }
+  GRAPH <urn:locx:graph:go>        { ?term rdfs:label ?label . }
+  GRAPH <urn:locx:graph:goa-human> { ?g locx:polarity ?gpol ; locx:relation ?rel ; locx:evidence/rdf:type ?eco ; locx:location/rdf:type ?gt . }
+  GRAPH <urn:locx:graph:ro>        { ?rel rdfs:label ?q . }
+  GRAPH <urn:locx:graph:eco>       { ?eco rdfs:label ?ev . }
+  GRAPH <urn:locx:graph:go>        { ?gt rdfs:label ?glabel . }
 }
 GROUP BY ?a ?symbol ?label ?polarity ?nGroups ?nPapers ?context
 ORDER BY DESC(?nGroups) DESC(?nPapers) ?symbol

@@ -1,10 +1,9 @@
-# Demo / Errors: invalid mentions per flag (a mention can have several flags)
-PREFIX locx:    <http://example.org/locx/>
-PREFIX prov:    <http://www.w3.org/ns/prov#>
-PREFIX dcterms: <http://purl.org/dc/terms/>
-PREFIX rdfs:    <http://www.w3.org/2000/01/rdf-schema#>
-PREFIX foaf:    <http://xmlns.com/foaf/0.1/>
-SELECT ?flag (COUNT(DISTINCT ?m) AS ?mentions)
-WHERE { GRAPH <%RUN_GRAPH%> { ?m locx:valid false ; locx:flag ?flag . } }
-GROUP BY ?flag
+# Demo / Errors: invalid claims per flag (a claim can have several flags); ?flag = the flag's token (used as the
+# page's identifier), ?label = its label (locx ontology)
+PREFIX rdfs:     <http://www.w3.org/2000/01/rdf-schema#>
+PREFIX locx:     <http://example.org/locx/>
+SELECT ?flag ?label (COUNT(DISTINCT ?m) AS ?mentions)
+WHERE { GRAPH <%RUN_GRAPH%> { ?m locx:valid false ; locx:flag ?f . }
+        GRAPH <urn:locx:graph:ontology> { ?f locx:token ?flag ; rdfs:label ?label } }
+GROUP BY ?flag ?label
 ORDER BY DESC(?mentions)

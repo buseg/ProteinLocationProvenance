@@ -1,18 +1,24 @@
-# Demo / Protein pages: the curated side for one protein (GOA CC rows; ND left out), with evidence code,
-#   the database that made the annotation (assignedBy), its date and its reference (PMID or GO_REF)
-PREFIX locx:    <http://example.org/locx/>
-PREFIX prov:    <http://www.w3.org/ns/prov#>
-PREFIX dcterms: <http://purl.org/dc/terms/>
-PREFIX rdfs:    <http://www.w3.org/2000/01/rdf-schema#>
-PREFIX foaf:    <http://xmlns.com/foaf/0.1/>
-SELECT ?term ?label ?qualifier ?negated ?evidence ?source ?assignedBy ?date ?reference
+# Demo / Protein explorer: every GOA row of one protein (%PROTEIN%), except ND (ECO's own GO code annotation)
+PREFIX rdf:      <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+PREFIX locx:     <http://example.org/locx/>
+PREFIX dcterms:  <http://purl.org/dc/terms/>
+PREFIX rdfs:     <http://www.w3.org/2000/01/rdf-schema#>
+PREFIX foaf:     <http://xmlns.com/foaf/0.1/>
+PREFIX obo:      <http://purl.obolibrary.org/obo/>
+SELECT ?term ?label ?qualifier ?negated ?evidence ?evGroup ?source ?assignedBy ?date ?reference
 WHERE {
-  GRAPH <urn:locx:graph:goa-human> {
-    ?g locx:protein <%PROTEIN%> ; locx:location ?term ; locx:qualifier ?qualifier ;
-       locx:negated ?negated ; locx:evidenceCode ?evidence .
-    OPTIONAL { ?g dcterms:source ?source } OPTIONAL { ?g locx:assignedBy ?assignedBy }
-    OPTIONAL { ?g dcterms:date ?date } OPTIONAL { ?g locx:reference ?reference }
-  }
-  FILTER (?evidence != "ND")
-  GRAPH <urn:locx:graph:go-cc> { ?term rdfs:label ?label . }
+  GRAPH <urn:locx:graph:goa-human> { ?g locx:protein <%PROTEIN%> ; locx:location/rdf:type ?term .
+                                     OPTIONAL { ?g dcterms:date ?date } OPTIONAL { ?g locx:reference ?reference } }
+  BIND (?term AS ?t)
+  GRAPH <urn:locx:graph:goa-human> { ?g locx:location/rdf:type ?t ; locx:relation ?rel ; locx:polarity ?pol ; locx:evidence/rdf:type ?eco .
+                                     OPTIONAL { ?g dcterms:source ?source }
+                                     OPTIONAL { ?g locx:assignedBy/foaf:name ?assignedBy } }
+  GRAPH <urn:locx:graph:ro>        { ?rel rdfs:label ?qualifier . }       # RO's label, e.g. "located in"
+  GRAPH <urn:locx:graph:eco>       { ?eco rdfs:label ?evidence . }        # ECO's label
+  OPTIONAL { GRAPH <urn:locx:graph:ontology> { ?category locx:ecoRoot ?root ; locx:token ?evGroup .
+    FILTER NOT EXISTS { ?category locx:ecoExcludedRoot ?x . GRAPH <urn:locx:graph:eco> { ?eco rdfs:subClassOf* ?x } } }
+    GRAPH <urn:locx:graph:eco> { ?eco rdfs:subClassOf* ?root } }   # GO evidence category (ECO hierarchy + locx ontology)
+  BIND (?pol = locx:Absent AS ?negated)
+  FILTER NOT EXISTS { GRAPH <urn:locx:graph:eco> { ?eco obo:ECO_9000002 "ND" } }
+  GRAPH <urn:locx:graph:go>        { ?term rdfs:label ?label . }
 }

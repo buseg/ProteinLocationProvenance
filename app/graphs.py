@@ -219,9 +219,7 @@ def _paper_groups(papers, authors):
     ids = defaultdict(set)
     for a in authors:
         if a["paper"] in parent:
-            ids[a["paper"]].add("key:" + a["key"])
-            if a["person"].startswith("https://orcid.org/"):
-                ids[a["paper"]].add("orcid:" + a["person"])
+            ids[a["paper"]].add("key:" + a["key"])   # the person (OpenAlex author, reasoner-merged by ORCID)
     ps = list(parent)
     for i in range(len(ps)):
         for j in range(i + 1, len(ps)):
@@ -287,7 +285,7 @@ def network_page(ctx):
         for g in goa:
             c = curated[g["term"]]
             c["label"], c["not"] = g["label"], c["not"] or g["negated"] == "true"
-            c["ev"].add(g["evidence"])
+            c["ev"].add((g["evidence"], g.get("evGroup", "")))
             c["q"].add(g["qualifier"])
             if g.get("assignedBy"):
                 c["by"].add(g["assignedBy"])
@@ -301,8 +299,7 @@ def network_page(ctx):
                          label="NOT" if c["not"] else None,
                          font={"size": 11, "color": INK2, "strokeWidth": 3, "strokeColor": SURF},
                          title=f"GOA: {'NOT ' if c['not'] else ''}{', '.join(sorted(c['q']))} {c['label']}\n"
-                               + "\n".join(f"{EV.LABEL.get(gr, gr)}: " + ", ".join(f"{cd} ({EV.code_title([cd]).split(': ', 1)[-1]})"
-                                                                               for cd in cs) for gr, cs in groups.items())
+                               + "\n".join(f"{EV.LABEL.get(gr, gr)}: " + ", ".join(cs) for gr, cs in groups.items())
                                + (f"\nby {', '.join(sorted(c['by']))}" if c["by"] else ""))
     hier, hq = [], ("", 0.0)
     frontier = list(terms)
@@ -401,7 +398,7 @@ def timeline_page(ctx):
     for g in goa:
         if g["negated"] == "true" or not g.get("date"):
             continue
-        grp = EV.groups_of([g["evidence"]])
+        grp = EV.groups_of([(g["evidence"], g.get("evGroup", ""))])
         best = next(iter(grp))
         y, m, d = (int(v) for v in g["date"][:10].split("-"))
         goa_rows.append({"location": g["label"], "date": y + (m - 1) / 12 + (d - 1) / 365, "evidence": EV.LABEL.get(best, best),

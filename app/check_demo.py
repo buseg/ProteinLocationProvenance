@@ -85,7 +85,6 @@ def main():
                    lambda k=k: D.provenance_authors(k), lambda k=k: D.provenance_goa(k),
                    lambda k=k: D.assertion(D.opposite(k))])
             for k in [D.local(x["a"]) for x in lit])
-    v2s["explore"] = timed([D.assertions_all])
     v2s["quality"] = timed([D.error_flags, D.run_info])
     v2r = {}
     app2 = str(Path(__file__).resolve().parent / "v2.py")
@@ -95,7 +94,7 @@ def main():
                         ("conditions", {"protein": prot["TFEB"]}), ("conditions", {"protein": prot["TP53"], "group_slim": True}),
                         ("protein_page", {"protein": prot["TP53"], "group_slim": True}),
                         ("network", {"protein": prot["TP53"]}), ("timeline", {"protein": prot["TFEB"]}),
-                        ("explore", {}), ("quality", {})]:
+                        ("quality", {})]:
         at = AppTest.from_file(app2, default_timeout=120)
         for k, v in {**state, "_test_page": page}.items():
             at.session_state[k] = v

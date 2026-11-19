@@ -1,16 +1,22 @@
-# Demo / Home and Explore: every assertion with its verdict and support counts (one table, filtered in the app)
-PREFIX locx:    <http://example.org/locx/>
-PREFIX rdfs:    <http://www.w3.org/2000/01/rdf-schema#>
+# Demo / Home and Explore: every assertion with its verdict (verdicts graph) and support counts (support graph);
+# one table, filtered in the app. ?evidence = token of the strongest GO evidence category (locx ontology).
+PREFIX rdf:      <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+PREFIX locx:     <http://example.org/locx/>
+PREFIX rdfs:     <http://www.w3.org/2000/01/rdf-schema#>
+PREFIX skos:     <http://www.w3.org/2004/02/skos/core#>
+PREFIX up:       <http://purl.uniprot.org/core/>
 SELECT ?a ?protein ?symbol ?term ?label ?polarity ?verdict ?nPapers ?nGroups ?nFinding ?yearFirst ?yearLast ?context ?evidence ?samePaper
 WHERE {
-  GRAPH <urn:locx:graph:verdicts> {
-    ?a locx:verdict ?verdict ; locx:nPapers ?nPapers ; locx:nGroups ?nGroups ; locx:nPapersFinding ?nFinding .
-    OPTIONAL { ?a locx:yearFirst ?yearFirst ; locx:yearLast ?yearLast }
-    OPTIONAL { ?a locx:contextDependent ?context }
-    OPTIONAL { ?a locx:goaEvidence ?evidence }        # strongest GO evidence group behind the verdict
-    OPTIONAL { ?a locx:curatedFromSamePaper ?samePaper }
-  }
-  GRAPH <urn:locx:graph:assertions>    { ?a locx:protein ?protein ; locx:location ?term ; locx:polarity ?polarity . }
-  GRAPH <urn:locx:graph:uniprot-human> { ?protein locx:geneSymbol ?symbol . }
-  GRAPH <urn:locx:graph:go-cc>         { ?term rdfs:label ?label . }
+  GRAPH <urn:locx:graph:support> { ?sp locx:about ?a ; locx:nPapers ?nPapers ; locx:nGroups ?nGroups ;
+        locx:nPapersFinding ?nFinding ; locx:contextDependent ?context .
+    OPTIONAL { ?sp locx:yearFirst ?yearFirst ; locx:yearLast ?yearLast } }
+  GRAPH <urn:locx:graph:verdicts> { ?vd locx:about ?a ; locx:outcome ?verdict .
+    OPTIONAL { ?vd locx:curatedFromSamePaper ?samePaper } }
+  # the evidence category's token, looked up only when the verdict has one (Novel and Uninformative have none)
+  OPTIONAL { GRAPH <urn:locx:graph:verdicts> { ?vd locx:strongestEvidence ?evCategory }
+             GRAPH <urn:locx:graph:ontology> { ?evCategory locx:token ?evidence } }
+  GRAPH <urn:locx:graph:assertions> { ?a locx:protein ?protein ; locx:location/rdf:type ?term ; locx:polarity ?polarity . }
+  { SELECT ?protein (MIN(?s) AS ?symbol) WHERE {   # gene symbol (UniProt: up:encodedBy -> skos:prefLabel)
+      GRAPH <urn:locx:graph:uniprot-human> { ?protein up:encodedBy/skos:prefLabel ?s . } } GROUP BY ?protein }
+  GRAPH <urn:locx:graph:go> { ?term rdfs:label ?label . }
 }

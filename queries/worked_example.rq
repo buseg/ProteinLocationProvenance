@@ -1,19 +1,24 @@
-# M10: one worked example — the paper side (sentence, title, year, journal) and the GOA rows behind
-# the verdict (evidence code, qualifier, NOT, source). %MENTION%, %ASSERTION%, %RUN_GRAPH% are filled in.
-PREFIX locx:    <http://example.org/locx/>
-PREFIX prov:    <http://www.w3.org/ns/prov#>
-PREFIX dcterms: <http://purl.org/dc/terms/>
-PREFIX rdfs:    <http://www.w3.org/2000/01/rdf-schema#>
+# Report: one worked example: the paper side (sentence, title, year, journal) and the GOA rows behind the verdict,
+# with ECO / RO labels from the official releases
+PREFIX rdf:      <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+PREFIX locx:     <http://example.org/locx/>
+PREFIX prov:     <http://www.w3.org/ns/prov#>
+PREFIX dcterms:  <http://purl.org/dc/terms/>
+PREFIX rdfs:     <http://www.w3.org/2000/01/rdf-schema#>
+PREFIX frbr:     <http://purl.org/vocab/frbr/core#>
+PREFIX oa:       <http://www.w3.org/ns/oa#>
 SELECT ?sentence ?title ?year ?journal ?goaLabel ?evidence ?qualifier ?negated ?source
 WHERE {
-  GRAPH <%RUN_GRAPH%>             { <%MENTION%> locx:sentenceText ?sentence ; prov:wasDerivedFrom ?paper . }
+  GRAPH <%RUN_GRAPH%>             { <%MENTION%> locx:evidenceSentence/oa:hasSelector/oa:exact ?sentence ; prov:wasDerivedFrom ?paper . }
   GRAPH <urn:locx:graph:papers>   { ?paper dcterms:title ?title .
-                                    OPTIONAL { ?paper locx:year ?year } OPTIONAL { ?paper locx:journal ?journal } }
+                                    OPTIONAL { ?paper dcterms:date ?date } BIND (YEAR(?date) AS ?year) OPTIONAL { ?paper frbr:partOf/dcterms:title ?journal } }
   OPTIONAL {
-    GRAPH <urn:locx:graph:verdicts>  { <%ASSERTION%> locx:goaMatch ?g . }
-    GRAPH <urn:locx:graph:goa-human> { ?g locx:location ?gl ; locx:evidenceCode ?evidence ;
-                                          locx:qualifier ?qualifier ; locx:negated ?negated .
+    GRAPH <urn:locx:graph:verdicts>  { ?vd locx:about <%ASSERTION%> ; locx:goaMatch ?g . }
+    GRAPH <urn:locx:graph:goa-human> { ?g locx:location/rdf:type ?gl ; locx:evidence/rdf:type ?eco ; locx:relation ?rel ; locx:polarity ?pol .
                                        OPTIONAL { ?g dcterms:source ?source } }
-    GRAPH <urn:locx:graph:go-cc>     { ?gl rdfs:label ?goaLabel . }
+    GRAPH <urn:locx:graph:go>        { ?gl rdfs:label ?goaLabel . }
+    GRAPH <urn:locx:graph:eco>       { ?eco rdfs:label ?evidence . }
+    GRAPH <urn:locx:graph:ro>        { ?rel rdfs:label ?qualifier . }
+    BIND (?pol = locx:Absent AS ?negated)
   }
 }
