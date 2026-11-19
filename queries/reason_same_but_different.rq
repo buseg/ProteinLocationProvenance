@@ -1,0 +1,15 @@
+# make reason, consistency (OWL 2 RL eq-diff2): the reasoner inferred owl:sameAs between two individuals that the
+# locx ontology declares different (owl:AllDifferent, e.g. two values of one value set; happens when a functional
+# property has two different values). Expected: no rows.
+PREFIX owl: <http://www.w3.org/2002/07/owl#>
+PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+SELECT ?x ?y
+WHERE {
+  GRAPH <urn:locx:graph:inferred> { ?x owl:sameAs ?y . FILTER (?x != ?y) }
+  GRAPH <urn:locx:graph:ontology> {
+    ?d a owl:AllDifferent ; owl:distinctMembers ?list .
+    ?list rdf:rest*/rdf:first ?x .
+    ?list rdf:rest*/rdf:first ?y .
+  }
+}
+LIMIT 100

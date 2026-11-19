@@ -1,6 +1,6 @@
-# M2 sanity: negated (NOT) GOA CC annotations exist
+# M2 sanity: GOA rows that say NOT (locx:polarity locx:Absent). Expected: >= 1.
 PREFIX locx: <http://example.org/locx/>
 SELECT (COUNT(?a) AS ?n)
 WHERE {
-  GRAPH <urn:locx:graph:goa-human> { ?a locx:negated true . }
+  GRAPH <urn:locx:graph:goa-human> { ?a locx:polarity locx:Absent . }
 }

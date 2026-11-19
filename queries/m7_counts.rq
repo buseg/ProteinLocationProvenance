@@ -1,11 +1,10 @@
-# M7 sanity: mentions (all / valid) in the run graph, assertions, papers
-# %RUN_GRAPH% is replaced by the run's named graph, e.g. urn:locx:graph:run/gemma4-31b_20261116-1655
+# M7 sanity (run by `make load`): claims, valid claims, assertions, papers in the loaded graphs.
 PREFIX locx:  <http://example.org/locx/>
 PREFIX fabio: <http://purl.org/spar/fabio/>
-SELECT ?mentions ?valid_mentions ?assertions ?papers
+SELECT ?claims ?valid_claims ?assertions ?papers
 WHERE {
-  { SELECT (COUNT(?m) AS ?mentions) (SUM(IF(?v, 1, 0)) AS ?valid_mentions)
-    WHERE { GRAPH <%RUN_GRAPH%> { ?m a locx:Mention ; locx:valid ?v } } }
+  { SELECT (COUNT(?c) AS ?claims) (SUM(IF(?v, 1, 0)) AS ?valid_claims)
+    WHERE { GRAPH <%RUN_GRAPH%> { ?c a locx:Claim ; locx:valid ?v } } }
   { SELECT (COUNT(?a) AS ?assertions)
     WHERE { GRAPH <urn:locx:graph:assertions> { ?a a locx:Assertion } } }
   { SELECT (COUNT(?p) AS ?papers)

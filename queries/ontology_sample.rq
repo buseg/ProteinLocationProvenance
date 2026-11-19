@@ -1,0 +1,64 @@
+# Ontology sample (scripts/check_ontology.py): everything the knowledge graph holds about one protein (%PROTEIN%), from
+#   all named graphs, as one RDF graph to open in Protégé with the locx ontology. %RUN_GRAPH% = the main run.
+#   UniProt: the protein, its names, gene and subcellular location annotation (not UniProt's evidence reification:
+#   rdf:Statement is not allowed in OWL 2 DL; it stays in the uniprot-human graph). Claims with their evidence sentence
+#   (Web Annotation) and abstract; GOA rows with their contexts; papers (those of the claims and those GOA cites)
+#   with journal, citation count, authorships, persons and institutions; support, author groups and verdicts of the
+#   protein's assertions with their activities; GO terms used, with all ancestors (is_a and part_of restrictions).
+#   Locations and GOA evidence are individuals typed with their GO / ECO class (no punning).
+PREFIX rdf:      <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+PREFIX locx:    <http://example.org/locx/>
+PREFIX prov:    <http://www.w3.org/ns/prov#>
+PREFIX dcterms: <http://purl.org/dc/terms/>
+PREFIX rdfs:    <http://www.w3.org/2000/01/rdf-schema#>
+PREFIX owl:     <http://www.w3.org/2002/07/owl#>
+PREFIX up:      <http://purl.uniprot.org/core/>
+PREFIX frbr:    <http://purl.org/vocab/frbr/core#>
+PREFIX c4o:     <http://purl.org/spar/c4o/>
+PREFIX oa:      <http://www.w3.org/ns/oa#>
+CONSTRUCT { ?s ?p ?o }
+WHERE {
+  { GRAPH <urn:locx:graph:uniprot-human> { <%PROTEIN%> ?p ?o } BIND (<%PROTEIN%> AS ?s) }                 # the protein
+  UNION { GRAPH <urn:locx:graph:uniprot-human> {                                                        # names, gene,
+            <%PROTEIN%> up:recommendedName|up:alternativeName|up:encodedBy|up:annotation ?s . ?s ?p ?o } }  #   location
+  UNION { GRAPH <urn:locx:graph:uniprot-human> { <%PROTEIN%> up:annotation/up:locatedIn ?s . ?s ?p ?o } }
+  UNION { GRAPH <urn:locx:graph:assertions> { ?s locx:protein <%PROTEIN%> ; ?p ?o } }                    # assertions
+  UNION { GRAPH <urn:locx:graph:assertions> { ?x locx:protein <%PROTEIN%> ; locx:location ?s . ?s ?p ?o } }   # their locations
+  UNION { GRAPH <%RUN_GRAPH%> { ?x locx:protein <%PROTEIN%> ; locx:location ?s . ?s ?p ?o } }                  # claim locations
+  UNION { GRAPH <urn:locx:graph:goa-human> { ?x locx:protein <%PROTEIN%> ; locx:location|locx:evidence ?s . ?s ?p ?o } }  # GOA
+  UNION { GRAPH <urn:locx:graph:assertions> { ?a locx:protein <%PROTEIN%> }                              # support, groups,
+          { GRAPH <urn:locx:graph:support> { ?s locx:about ?a ; ?p ?o } }                                #   verdicts
+          UNION { GRAPH <urn:locx:graph:verdicts> { ?s locx:about ?a ; ?p ?o } } }
+  UNION { GRAPH <urn:locx:graph:support> { ?s a locx:SupportComputation ; ?p ?o } }                                # their activities
+  UNION { GRAPH <urn:locx:graph:verdicts> { ?s a locx:VerdictComputation ; ?p ?o } }
+  UNION { GRAPH <%RUN_GRAPH%> { ?s locx:protein <%PROTEIN%> ; ?p ?o } }                                  # claims
+  UNION { GRAPH <%RUN_GRAPH%> { ?c locx:protein <%PROTEIN%> ; locx:hasContext ?s . ?s ?p ?o } }          # free-text contexts
+  UNION { GRAPH <%RUN_GRAPH%> { ?c locx:protein <%PROTEIN%> ; locx:evidenceSentence ?s . ?s ?p ?o } }    # sentences
+  UNION { GRAPH <%RUN_GRAPH%> { ?c locx:protein <%PROTEIN%> ; locx:evidenceSentence/oa:hasSelector ?s . ?s ?p ?o } }
+  UNION { GRAPH <%RUN_GRAPH%> { ?c locx:protein <%PROTEIN%> ; locx:evidenceSentence/oa:hasSource ?s . }   # abstracts
+          GRAPH <urn:locx:graph:abstracts> { ?s ?p ?o } }
+  UNION { GRAPH <urn:locx:graph:goa-human> { ?s locx:protein <%PROTEIN%> ; ?p ?o } }                    # GOA rows
+  UNION { GRAPH <urn:locx:graph:goa-human> { ?g locx:protein <%PROTEIN%> ; locx:hasContext ?s . ?s ?p ?o } }   # GOA contexts
+  UNION { GRAPH <urn:locx:graph:goa-human> { ?g locx:protein <%PROTEIN%> ; locx:hasContext/locx:contextPart ?s . ?s ?p ?o } }
+  UNION { GRAPH <urn:locx:graph:goa-human> { ?g locx:protein <%PROTEIN%> ; locx:assignedBy ?s . ?s ?p ?o } }
+  UNION { GRAPH <urn:locx:graph:goa-human> { ?s a prov:Entity ; ?p ?o } }                               # the GOA file
+  UNION { { SELECT DISTINCT ?paper WHERE {                                                               # papers and
+            { GRAPH <%RUN_GRAPH%> { ?m locx:protein <%PROTEIN%> ; prov:wasDerivedFrom ?paper } }        #   what hangs
+            UNION { GRAPH <urn:locx:graph:goa-human> { ?x locx:protein <%PROTEIN%> ; dcterms:source ?paper } } } }  # on them
+          { GRAPH <urn:locx:graph:papers> { ?paper ?p ?o } BIND (?paper AS ?s) }
+          UNION { GRAPH <urn:locx:graph:papers> { ?paper frbr:partOf|c4o:hasGlobalCitationFrequency|locx:hasAuthorship ?s . ?s ?p ?o } }
+          UNION { GRAPH <urn:locx:graph:papers> { ?paper locx:hasAuthorship/(locx:author|locx:affiliation) ?s . ?s ?p ?o } } }
+  UNION { GRAPH <urn:locx:graph:papers> { ?s a <http://purl.org/spar/c4o/BibliographicInformationSource> ; ?p ?o } }
+  UNION { { SELECT DISTINCT ?t WHERE {                                                                   # GO terms
+            { GRAPH <urn:locx:graph:assertions> { ?a locx:protein <%PROTEIN%> ; locx:location/rdf:type ?t } }
+            UNION { GRAPH <%RUN_GRAPH%> { ?m locx:protein <%PROTEIN%> ; locx:location/rdf:type ?t } }
+            UNION { GRAPH <urn:locx:graph:goa-human> { ?x locx:protein <%PROTEIN%> ; locx:location/rdf:type ?t } } } }
+          GRAPH <urn:locx:graph:go> { ?t (rdfs:subClassOf|rdfs:subClassOf/owl:someValuesFrom)* ?c .
+                                      { ?c ?p ?o BIND (?c AS ?s) } UNION { ?c rdfs:subClassOf ?s . FILTER isBlank(?s) ?s ?p ?o } } }
+  UNION { { SELECT DISTINCT ?e WHERE { GRAPH <urn:locx:graph:goa-human> {                              # ECO classes of
+            ?x locx:protein <%PROTEIN%> ; locx:evidence/rdf:type ?e } } }                                 #   the evidence,
+          GRAPH <urn:locx:graph:eco> { ?e rdfs:subClassOf* ?s . FILTER isIRI(?s)                              #   with ancestors
+                                       ?s ?p ?o . FILTER (?p IN (rdfs:label, rdfs:subClassOf, rdf:type) && !isBlank(?o)) } }
+  UNION { GRAPH <%RUN_GRAPH%> { ?s a locx:ExtractionRun ; ?p ?o } }                                          # the run
+  UNION { GRAPH <%RUN_GRAPH%> { ?s a prov:SoftwareAgent ; ?p ?o } }                                     # the model
+}

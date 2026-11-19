@@ -1,13 +1,17 @@
 # M7 sanity: assertions supported by the most distinct papers (gene symbol and GO label shown)
+PREFIX rdf:      <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
 PREFIX locx: <http://example.org/locx/>
+PREFIX up:      <http://purl.uniprot.org/core/>
+PREFIX skos:    <http://www.w3.org/2004/02/skos/core#>
 PREFIX prov: <http://www.w3.org/ns/prov#>
 PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
 SELECT ?symbol ?location ?polarity (COUNT(DISTINCT ?paper) AS ?papers)
 WHERE {
   GRAPH <%RUN_GRAPH%>               { ?m locx:asserts ?a ; prov:wasDerivedFrom ?paper . }
-  GRAPH <urn:locx:graph:assertions>  { ?a locx:protein ?prot ; locx:location ?loc ; locx:polarity ?polarity . }
-  GRAPH <urn:locx:graph:uniprot-human> { ?prot locx:geneSymbol ?symbol . }
-  GRAPH <urn:locx:graph:go-cc>       { ?loc rdfs:label ?location . }
+  GRAPH <urn:locx:graph:assertions>  { ?a locx:protein ?prot ; locx:location/rdf:type ?loc ; locx:polarity ?polarity . }
+  { SELECT ?prot (MIN(?s) AS ?symbol) WHERE {   # gene symbol (UniProt: up:encodedBy -> skos:prefLabel)
+      GRAPH <urn:locx:graph:uniprot-human> { ?prot up:encodedBy/skos:prefLabel ?s . } } GROUP BY ?prot }
+  GRAPH <urn:locx:graph:go>       { ?loc rdfs:label ?location . }
 }
 GROUP BY ?symbol ?location ?polarity
 ORDER BY DESC(?papers)

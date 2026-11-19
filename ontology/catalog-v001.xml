@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Protégé: load the imports of locx.owl.ttl (GO, ECO, RO, UniProt core) from the local copies of the releases used.
+     Without these files (e.g. on a laptop), Protégé downloads the current releases from the OBO PURLs instead. -->
+<catalog prefer="public" xmlns="urn:oasis:names:tc:entity:xmlns:xml:catalog">
+    <uri name="http://purl.obolibrary.org/obo/go/go-basic.owl" uri="../data/raw/obo/go-basic_2026-07-26.owl"/>
+    <uri name="http://purl.obolibrary.org/obo/eco.owl" uri="../data/raw/obo/eco_2026-07-10.owl"/>
+    <uri name="http://purl.obolibrary.org/obo/ro.owl" uri="../data/raw/obo/ro_2026-09-04.owl"/>
+    <uri name="http://purl.uniprot.org/core/" uri="../data/raw/uniprot_core/core.owl"/>
+</catalog>

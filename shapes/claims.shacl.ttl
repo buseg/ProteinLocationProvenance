@@ -1,95 +1,161 @@
 # locx gate shapes (SPEC M7): the final papers + run + assertions graphs must conform before loading.
-# Validated by locx/kg/claims_rdf.py together with the GO CC and UniProt graphs (for the class checks).
+# Validated by locx/kg/claims_rdf.py together with the locx ontology (so value IRIs are typed with their value-set
+# class), the cellular-component part of the official GO release, and the UniProt protein types. Value lists live
+# only in the ontology: shapes check them with sh:class.
 
 @prefix sh:      <http://www.w3.org/ns/shacl#> .
 @prefix xsd:     <http://www.w3.org/2001/XMLSchema#> .
+@prefix rdf:     <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
 @prefix rdfs:    <http://www.w3.org/2000/01/rdf-schema#> .
 @prefix owl:     <http://www.w3.org/2002/07/owl#> .
 @prefix obo:     <http://purl.obolibrary.org/obo/> .
 @prefix prov:    <http://www.w3.org/ns/prov#> .
 @prefix dcterms: <http://purl.org/dc/terms/> .
 @prefix fabio:   <http://purl.org/spar/fabio/> .
+@prefix frbr:    <http://purl.org/vocab/frbr/core#> .
+@prefix prism:   <http://prismstandard.org/namespaces/basic/2.0/> .
+@prefix c4o:     <http://purl.org/spar/c4o/> .
+@prefix oa:      <http://www.w3.org/ns/oa#> .
+@prefix up:      <http://purl.uniprot.org/core/> .
 @prefix foaf:    <http://xmlns.com/foaf/0.1/> .
 @prefix locx:    <http://example.org/locx/> .
 
 locx:gatePrefixes
     sh:declare [ sh:prefix "locx" ; sh:namespace "http://example.org/locx/"^^xsd:anyURI ] ,
                [ sh:prefix "obo"  ; sh:namespace "http://purl.obolibrary.org/obo/"^^xsd:anyURI ] ,
-               [ sh:prefix "rdfs" ; sh:namespace "http://www.w3.org/2000/01/rdf-schema#"^^xsd:anyURI ] .
+               [ sh:prefix "owl"  ; sh:namespace "http://www.w3.org/2002/07/owl#"^^xsd:anyURI ] ,
+               [ sh:prefix "rdfs" ; sh:namespace "http://www.w3.org/2000/01/rdf-schema#"^^xsd:anyURI ] ,
+               [ sh:prefix "rdf"  ; sh:namespace "http://www.w3.org/1999/02/22-rdf-syntax-ns#"^^xsd:anyURI ] .
 
-# --- Mention: one paper saying something, with provenance -------------------------------------
-locx:MentionShape
+# --- Claim: one sentence of one paper, as the LLM read it, with provenance -------------------------------------------
+locx:ClaimShape
     a sh:NodeShape ;
-    sh:targetClass locx:Mention ;
+    sh:targetClass locx:Claim ;
     sh:property [ sh:path prov:wasDerivedFrom ; sh:minCount 1 ; sh:maxCount 1 ; sh:class fabio:JournalArticle ] ;
-    sh:property [ sh:path prov:wasGeneratedBy ; sh:minCount 1 ; sh:maxCount 1 ; sh:class prov:Activity ] ;
-    sh:property [ sh:path locx:sentenceText ; sh:minCount 1 ; sh:maxCount 1 ; sh:datatype xsd:string ] ;
+    sh:property [ sh:path prov:wasGeneratedBy ; sh:minCount 1 ; sh:maxCount 1 ; sh:class locx:ExtractionRun ] ;
+    sh:property [ sh:path locx:evidenceSentence ; sh:minCount 1 ; sh:maxCount 1 ; sh:class oa:SpecificResource ] ;
     sh:property [ sh:path locx:sentenceId ; sh:minCount 1 ; sh:maxCount 1 ; sh:pattern "^S[0-9]+$" ] ;
-    sh:property [ sh:path locx:polarity ; sh:minCount 1 ; sh:maxCount 1 ; sh:in ( locx:Present locx:Absent ) ] ;
-    sh:property [ sh:path locx:certainty ; sh:maxCount 1 ; sh:in ( locx:Stated locx:Hedged ) ] ;
-    sh:property [ sh:path locx:sourceType ; sh:maxCount 1 ; sh:in ( locx:Finding locx:Background ) ] ;
+    sh:property [ sh:path locx:protein ; sh:minCount 1 ; sh:maxCount 1 ; sh:class up:Protein ] ;
+    sh:property [ sh:path locx:relation ; sh:minCount 1 ; sh:maxCount 1 ; sh:nodeKind sh:IRI ] ;
+    sh:property [ sh:path locx:location ; sh:maxCount 1 ; sh:class obo:GO_0005575 ] ;   # an individual of a GO CC class
+    sh:property [ sh:path locx:polarity ; sh:minCount 1 ; sh:maxCount 1 ; sh:class locx:Polarity ] ;
+    sh:property [ sh:path locx:certainty ; sh:minCount 1 ; sh:maxCount 1 ; sh:class locx:Certainty ] ;
+    sh:property [ sh:path locx:sourceType ; sh:minCount 1 ; sh:maxCount 1 ; sh:class locx:SourceType ] ;
+    sh:property [ sh:path locx:method ; sh:minCount 1 ; sh:maxCount 1 ; sh:class locx:Method ] ;
+    sh:property [ sh:path locx:organism ; sh:minCount 1 ; sh:maxCount 1 ; sh:class locx:Organism ] ;
+    sh:property [ sh:path locx:flag ; sh:class locx:QualityFlag ] ;
+    sh:property [ sh:path locx:groundingMethod ; sh:maxCount 1 ; sh:class locx:GroundingMethod ] ;
     sh:property [ sh:path locx:valid ; sh:minCount 1 ; sh:maxCount 1 ; sh:datatype xsd:boolean ] ;
     sh:property [ sh:path locx:asserts ; sh:maxCount 1 ; sh:class locx:Assertion ] ;
-    sh:property [ sh:path locx:protein ; sh:minCount 1 ; sh:maxCount 1 ; sh:class locx:Protein ] ;
-    sh:property [ sh:path locx:location ; sh:maxCount 1 ; sh:class owl:Class ] ;
-    # only valid mentions assert, and an asserting mention carries the same content as its assertion
+    # only valid claims assert, and an asserting claim carries the same content as its assertion
     sh:sparql [
         a sh:SPARQLConstraint ;
         sh:prefixes locx:gatePrefixes ;
-        sh:message "An invalid mention asserts, or a mention disagrees with its assertion" ;
+        sh:message "An invalid claim asserts, or a claim disagrees with its assertion" ;
         sh:select """
             SELECT $this WHERE {
                 $this locx:asserts ?a .
                 { $this locx:valid false }
                 UNION { $this locx:protein ?p . FILTER NOT EXISTS { ?a locx:protein ?p } }
-                UNION { $this locx:location ?l . FILTER NOT EXISTS { ?a locx:location ?l } }
+                UNION { $this locx:relation ?r . FILTER NOT EXISTS { ?a locx:relation ?r } }
+                UNION { $this locx:location/rdf:type ?l . FILTER NOT EXISTS { ?a locx:location/rdf:type ?l } }
                 UNION { $this locx:polarity ?x . FILTER NOT EXISTS { ?a locx:polarity ?x } }
             }
         """ ;
     ] .
 
-# --- Assertion: the content, stored once ------------------------------------------------------
+locx:FreeTextContextShape
+    a sh:NodeShape ;
+    sh:targetClass locx:FreeTextContext ;
+    sh:property [ sh:path locx:contextText ; sh:minCount 1 ; sh:maxCount 1 ; sh:datatype xsd:string ] ;
+    sh:property [ sh:path locx:contextKind ; sh:minCount 1 ; sh:maxCount 1 ; sh:class locx:ContextKind ] .
+
+# --- The evidence sentence: a W3C Web Annotation span of the abstract ------------------------------------------------
+locx:SentenceShape
+    a sh:NodeShape ;
+    sh:targetClass oa:SpecificResource ;
+    sh:property [ sh:path oa:hasSource ; sh:minCount 1 ; sh:maxCount 1 ; sh:pattern "^http://example.org/locx/abstract/[0-9]+$" ] ;
+    sh:property [ sh:path oa:hasSelector ; sh:minCount 2 ; sh:maxCount 2 ] .
+
+locx:PositionShape
+    a sh:NodeShape ;
+    sh:targetClass oa:TextPositionSelector ;
+    sh:property [ sh:path oa:start ; sh:minCount 1 ; sh:maxCount 1 ; sh:datatype xsd:integer ] ;
+    sh:property [ sh:path oa:end ; sh:minCount 1 ; sh:maxCount 1 ; sh:datatype xsd:integer ] .
+
+locx:QuoteShape
+    a sh:NodeShape ;
+    sh:targetClass oa:TextQuoteSelector ;
+    sh:property [ sh:path oa:exact ; sh:minCount 1 ; sh:maxCount 1 ; sh:datatype xsd:string ] .
+
+# --- Assertion: the content, stored once ------------------------------------------------------------------------------
 locx:AssertionShape
     a sh:NodeShape ;
     sh:targetClass locx:Assertion ;
     sh:property [ sh:path locx:protein ; sh:minCount 1 ; sh:maxCount 1 ; sh:nodeKind sh:IRI ;
-                  sh:pattern "^http://purl.uniprot.org/uniprot/" ; sh:class locx:Protein ] ;
-    sh:property [ sh:path locx:location ; sh:minCount 1 ; sh:maxCount 1 ; sh:nodeKind sh:IRI ;
-                  sh:pattern "^http://purl.obolibrary.org/obo/GO_" ; sh:class owl:Class ] ;
-    sh:property [ sh:path locx:polarity ; sh:minCount 1 ; sh:maxCount 1 ; sh:in ( locx:Present locx:Absent ) ] ;
-    # every assertion is backed by at least one valid mention
+                  sh:pattern "^http://purl.uniprot.org/uniprot/" ; sh:class up:Protein ] ;
+    sh:property [ sh:path locx:relation ; sh:minCount 1 ; sh:maxCount 1 ; sh:nodeKind sh:IRI ] ;
+    sh:property [ sh:path locx:location ; sh:minCount 1 ; sh:maxCount 1 ; sh:nodeKind sh:IRI ; sh:class obo:GO_0005575 ] ;
+    sh:property [ sh:path ( locx:location rdf:type ) ; sh:minCount 1 ; sh:maxCount 1 ;
+                  sh:pattern "^http://purl.obolibrary.org/obo/GO_" ] ;
+    sh:property [ sh:path locx:polarity ; sh:minCount 1 ; sh:maxCount 1 ; sh:class locx:Polarity ] ;
+    # every assertion is backed by at least one valid claim
     sh:property [ sh:path [ sh:inversePath locx:asserts ] ; sh:minCount 1 ] ;
-    # V5 again, as a gate: no assertion may sit in a non-human compartment
+    # V5 again, as a gate: no assertion may sit in a non-human compartment (roots stated in the ontology)
     sh:sparql [
         a sh:SPARQLConstraint ;
         sh:prefixes locx:gatePrefixes ;
         sh:message "Assertion location {?loc} lies under a non-human compartment" ;
         sh:select """
             SELECT $this ?loc WHERE {
-                $this locx:location ?loc .
-                ?loc (rdfs:subClassOf|obo:BFO_0000050)* ?root .
-                FILTER (?root IN (obo:GO_0009536, obo:GO_0005618, obo:GO_0009579, obo:GO_0042597))
+                $this locx:location/rdf:type ?loc .   # the location individual's GO class
+                ?loc (rdfs:subClassOf|rdfs:subClassOf/owl:someValuesFrom)* ?root .
+                ?root locx:nonHumanCompartmentRoot true .
             }
         """ ;
     ] .
 
-# --- Paper and run ---------------------------------------------------------------------------
+# --- Papers, journals, citation counts, authorships ------------------------------------------------------------------
 locx:PaperShape
     a sh:NodeShape ;
     sh:targetClass fabio:JournalArticle ;
     sh:property [ sh:path dcterms:title ; sh:minCount 1 ; sh:maxCount 1 ] ;
-    sh:property [ sh:path locx:year ; sh:maxCount 1 ; sh:datatype xsd:integer ] ;
-    sh:property [ sh:path locx:tier ; sh:minCount 1 ; sh:in ( "dev" "silver" "discovery" ) ] .
+    sh:property [ sh:path dcterms:date ; sh:maxCount 1 ; sh:datatype xsd:date ] ;
+    sh:property [ sh:path prism:doi ; sh:maxCount 1 ; sh:datatype xsd:string ] ;
+    sh:property [ sh:path frbr:partOf ; sh:maxCount 1 ; sh:class fabio:Journal ] ;
+    sh:property [ sh:path c4o:hasGlobalCitationFrequency ; sh:maxCount 1 ; sh:class c4o:GlobalCitationCount ] ;
+    sh:property [ sh:path locx:hasAuthorship ; sh:class locx:Authorship ] .
+
+locx:JournalShape
+    a sh:NodeShape ;
+    sh:targetClass fabio:Journal ;
+    sh:property [ sh:path fabio:hasNationalLibraryOfMedicineJournalId ; sh:minCount 1 ; sh:maxCount 1 ; sh:pattern "^[0-9A-Z]+$" ] ;
+    sh:property [ sh:path dcterms:title ; sh:maxCount 1 ] .
+
+locx:CitationCountShape
+    a sh:NodeShape ;
+    sh:targetClass c4o:GlobalCitationCount ;
+    sh:property [ sh:path c4o:hasGlobalCountValue ; sh:minCount 1 ; sh:maxCount 1 ; sh:datatype xsd:integer ] ;
+    sh:property [ sh:path c4o:hasGlobalCountDate ; sh:maxCount 1 ; sh:datatype xsd:date ] ;
+    sh:property [ sh:path c4o:hasGlobalCountSource ; sh:minCount 1 ; sh:maxCount 1 ; sh:class c4o:BibliographicInformationSource ] .
 
 locx:AuthorshipShape
     a sh:NodeShape ;
     sh:targetClass locx:Authorship ;
-    sh:property [ sh:path locx:author ; sh:minCount 1 ; sh:maxCount 1 ; sh:class foaf:Person ] ;
-    sh:property [ sh:path locx:position ; sh:minCount 1 ; sh:maxCount 1 ; sh:datatype xsd:integer ] .
+    sh:property [ sh:path locx:author ; sh:maxCount 1 ; sh:class foaf:Person ] ;
+    sh:property [ sh:path locx:authorName ; sh:minCount 1 ; sh:maxCount 1 ; sh:datatype xsd:string ] ;
+    sh:property [ sh:path locx:position ; sh:minCount 1 ; sh:maxCount 1 ; sh:datatype xsd:integer ] ;
+    sh:property [ sh:path locx:affiliation ; sh:class foaf:Organization ] .
 
+locx:PersonShape
+    a sh:NodeShape ;
+    sh:targetClass foaf:Person ;
+    sh:property [ sh:path locx:orcid ; sh:maxCount 1 ; sh:nodeKind sh:IRI ; sh:pattern "^https://orcid.org/" ] .
+
+# --- Run --------------------------------------------------------------------------------------------------------------
 locx:RunShape
     a sh:NodeShape ;
-    sh:targetClass prov:Activity ;
+    sh:targetClass locx:ExtractionRun ;
     sh:property [ sh:path prov:wasAssociatedWith ; sh:minCount 1 ; sh:class prov:SoftwareAgent ] ;
     sh:property [ sh:path prov:startedAtTime ; sh:minCount 1 ; sh:maxCount 1 ; sh:datatype xsd:dateTime ] ;
     sh:property [ sh:path locx:promptSha256 ; sh:minCount 1 ; sh:maxCount 1 ; sh:pattern "^[0-9a-f]{64}$" ] .

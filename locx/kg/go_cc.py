@@ -1,7 +1,7 @@
-"""GO cellular component subgraph -> Turtle, location dictionary, non-human / too-generic sets.
-
-part_of is written as a direct class-class triple (obo:BFO_0000050) on purpose, so that
-(rdfs:subClassOf|obo:BFO_0000050)* works in SPARQL. Not OWL-correct (SPEC M2.1).
+"""GO cellular component terms from go-basic.obo -> the grounding dictionary (data/interim/go_cc_dictionary.tsv),
+the non-human / too-generic sets and counts. The knowledge graph uses the official GO OWL release of the same version
+(graph go, locx/kg/releases.py); this module no longer writes a GO graph of its own (DECISIONS 2026-11-19).
+Which terms are too generic or non-human is stated in the locx ontology (section 10) and read from there.
 """
 import json
 import re
@@ -9,8 +9,8 @@ from collections import defaultdict
 
 import obonet
 
-from locx.config import CFG, INTERIM, RDF
-from locx.kg.ttl import PREFIXES, block, go_iri, lit
+from locx import ontology as O
+from locx.config import CFG, INTERIM
 
 # Adjective / short-form map (SPEC M2.4); every ID is verified by its label at build time.
 ADJECTIVES = [
@@ -32,11 +32,16 @@ ADJECTIVES = [
     (["centrosomal"], "GO:0005813", "centrosome"),
     (["stress granules"], "GO:0010494", "cytoplasmic stress granule"),
 ]
-# Roots whose descendants (is_a or part_of) cannot be in human cells (SPEC M2.5).
-NON_HUMAN_ROOTS = {"GO:0009536": "plastid", "GO:0005618": "cell wall",
-                   "GO:0009579": "thylakoid", "GO:0042597": "periplasmic space"}
-# Too generic to support a verdict (SPEC M2.6); labels have changed over time, so match on ID only.
-TOO_GENERIC = ["GO:0005575", "GO:0110165", "GO:0005622"]
+
+
+def go_id(iri: str) -> str:
+    """http://purl.obolibrary.org/obo/GO_0005634 -> GO:0005634"""
+    return iri.rsplit("/", 1)[1].replace("_", ":")
+
+
+def ontology_sets():
+    """Non-human compartment roots and too-generic terms, as stated in the locx ontology (section 10)."""
+    return [go_id(i) for i in O.annotated("nonHumanCompartmentRoot")], [go_id(i) for i in O.annotated("tooGeneric")]
 
 SYN = re.compile(r'^"((?:[^"\\]|\\.)*)"\s+(EXACT|RELATED|NARROW|BROAD)')
 
@@ -87,39 +92,15 @@ def build(obo_path):
 
     for _, go_id, label in ADJECTIVES:
         check_label(cc, go_id, label)
-    for go_id, label in NON_HUMAN_ROOTS.items():
-        check_label(cc, go_id, label)
-    for go_id in TOO_GENERIC:
-        if go_id not in cc:
-            raise SystemExit(f"[go_cc] FAIL: too-generic term {go_id} missing")
-    non_human = descendants(NON_HUMAN_ROOTS, parents)
-    too_generic = {g: cc[g]["name"] for g in TOO_GENERIC}
+    roots, generic = ontology_sets()
+    for g in roots + generic:
+        if g not in cc:
+            raise SystemExit(f"[go_cc] FAIL: {g} (stated in the locx ontology) is not a current GO CC term")
+    non_human = descendants({g: cc[g]["name"] for g in roots}, parents)
+    too_generic = {g: cc[g]["name"] for g in generic}
 
-    # Turtle
-    out = RDF / "go_cc.ttl"
-    out.parent.mkdir(parents=True, exist_ok=True)
-    n_isa = n_partof = 0
-    with open(out, "w") as f:
-        f.write(PREFIXES)
-        for go_id, d in sorted(cc.items()):
-            pairs = [("a", "owl:Class"), ("rdfs:label", lit(d["name"]))]
-            for kind, text in synonyms(d):
-                if kind == "EXACT":
-                    pairs.append(("oboInOwl:hasExactSynonym", lit(text)))
-                elif kind == "RELATED":
-                    pairs.append(("oboInOwl:hasRelatedSynonym", lit(text)))
-            for rel, p in sorted(parents[go_id]):
-                pairs.append(("rdfs:subClassOf" if rel == "is_a" else "obo:BFO_0000050", go_iri(p)))
-                n_isa += rel == "is_a"
-                n_partof += rel == "part_of"
-            if go_id in non_human:
-                pairs.append(("locx:nonHumanCompartment", "true"))
-            if go_id in too_generic:
-                pairs.append(("locx:tooGeneric", "true"))
-            # GO slim memberships (e.g. goslim_agr), as in GO's own OWL release; the demo groups terms by them
-            pairs += [("oboInOwl:inSubset", f"<http://purl.obolibrary.org/obo/go#{sub}>")
-                      for sub in sorted(d.get("subset", [])) if sub.startswith("goslim_")]
-            f.write(block(go_iri(go_id), pairs))
+    n_isa = sum(rel == "is_a" for ps in parents.values() for rel, _ in ps)
+    n_partof = sum(rel == "part_of" for ps in parents.values() for rel, _ in ps)
 
     # Dictionary: label + exact + related synonyms + adjective map, minus the stoplist
     stop = {s.lower() for s in CFG["candidates"]["stoplist"]}

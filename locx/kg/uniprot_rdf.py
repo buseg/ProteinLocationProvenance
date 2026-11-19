@@ -1,44 +1,57 @@
-"""Human Swiss-Prot TSV -> Turtle (proteins with names, gene symbols, NCBI GeneIDs)."""
-import csv
-import gzip
+"""UniProt human graph: the UniProt RDF fetched by locx/fetch/uniprot_rdf.py, in UniProt's own vocabulary (up:).
+
+Per protein: up:Protein, up:mnemonic (entry name), up:recommendedName / up:alternativeName -> up:fullName,
+up:encodedBy -> up:Gene with skos:prefLabel (symbol) / skos:altLabel (synonyms), rdfs:seeAlso -> NCBI GeneID,
+and the subcellular location annotation (free-text rdfs:comment, up:locatedIn -> UniProt location terms, the ECO
+evidence and cited papers behind each term). The location terms themselves are UniProt's published vocabulary,
+loaded unchanged as graph uniprot-locations. N-Triples is valid Turtle, so the cached responses are concatenated as they are.
+"""
+import re
+from collections import Counter
 
 from locx.config import RDF
-from locx.kg.ttl import PREFIXES, block, lit
+from locx.fetch import uniprot_rdf
 
-COLS = {"Entry": "acc", "Entry Name": "entry_name", "Gene Names (primary)": "gene",
-        "Gene Names (synonym)": "synonyms", "Protein names": "protein_names", "GeneID": "gene_ids",
-        "Subcellular location [CC]": "location_text"}
-
-
-def read(tsv_gz):
-    with gzip.open(tsv_gz, "rt", newline="") as f:
-        reader = csv.DictReader(f, delimiter="\t")
-        missing = set(COLS) - set(reader.fieldnames)
-        if missing:
-            raise SystemExit(f"[uniprot] FAIL: TSV columns missing: {missing}; got {reader.fieldnames}")
-        for r in reader:
-            yield {v: r[k] for k, v in COLS.items()}
+TYPE = "<http://www.w3.org/1999/02/22-rdf-syntax-ns#type>"
+PROTEIN = "<http://purl.uniprot.org/core/Protein>"
 
 
-def build(tsv_gz):
-    out = RDF / "uniprot_human.ttl"
-    n = n_gene = n_multi = 0
-    with open(out, "w") as f:
-        f.write(PREFIXES)
-        for r in read(tsv_gz):
-            n += 1
-            gene_ids = [g for g in r["gene_ids"].split(";") if g.strip()]
-            n_gene += bool(gene_ids)
-            n_multi += len(gene_ids) > 1
-            main_name = r["protein_names"].split(" (")[0]
-            pairs = [("a", "locx:Protein"),
-                     ("locx:entryName", lit(r["entry_name"])),
-                     ("locx:geneSymbol", lit(r["gene"].split(";")[0].strip()) if r["gene"] else None),
-                     ("locx:proteinName", lit(main_name) if main_name else None),
-                     ("locx:proteinNamesFull", lit(r["protein_names"]) if r["protein_names"] else None),
-                     ("locx:uniprotLocationText", lit(r["location_text"]) if r["location_text"] else None)]
-            pairs += [("locx:geneSynonym", lit(s)) for s in r["synonyms"].split() if s]
-            pairs += [("locx:ncbiGene", lit(g.strip())) for g in gene_ids]
-            f.write(block(f"uniprot:{r['acc']}", pairs))
-    print(f"[uniprot] {n} Swiss-Prot entries, {n_gene} with an NCBI GeneID ({n_multi} with several)")
-    return {"entries": n, "with_gene_id": n_gene, "with_several_gene_ids": n_multi}
+def build() -> dict:
+    info = uniprot_rdf.fetch()   # cached: no requests when all files exist
+    out, types = RDF / "uniprot_human.nt", RDF / "uniprot_proteins.ttl"
+    c, seen = Counter(), set()
+    with open(out, "w") as f, open(types, "w") as ft:
+        for name in info["files"]:
+            if name.startswith("terms_"):
+                continue   # the location vocabulary is graph uniprot-locations (UniProt's published file)
+            for line in (uniprot_rdf.CACHE / name).read_text().splitlines():
+                if not line.strip() or line in seen:
+                    continue
+                seen.add(line)
+                f.write(line + "\n")
+                c["triples"] += 1
+                s, p, o = line.split(" ", 2)
+                if p == TYPE and o.startswith(PROTEIN):
+                    ft.write(line + "\n")   # protein types only: the SHACL gate's class check
+                    c["proteins"] += 1
+                elif p == "<http://purl.uniprot.org/core/encodedBy>":
+                    c["encodedBy"] += 1
+                elif p == "<http://www.w3.org/2000/01/rdf-schema#seeAlso>":
+                    c["geneid_links"] += 1
+                elif p == "<http://purl.uniprot.org/core/annotation>":
+                    c["location_annotations"] += 1
+                elif p == "<http://purl.uniprot.org/core/cellularComponent>" and s.startswith("<http://purl.uniprot.org/uniprot/"):
+                    c["location_terms_used"] += 1
+                elif p == "<http://purl.uniprot.org/core/evidence>":
+                    c["location_evidence"] += 1
+    seen.clear()
+    with_ann = len({line.split(" ", 1)[0] for line in open(out) if " <http://purl.uniprot.org/core/annotation> " in line})
+    stats = {"proteins": info["proteins_found"], "other_uniprot_entries_cited_as_evidence": c["proteins"] - info["proteins_found"],
+             "missing_from_uniprot": info["missing"], "triples": c["triples"],
+             "gene_links": c["encodedBy"], "geneid_links": c["geneid_links"],
+             "proteins_with_location_annotation": with_ann, "location_term_links": c["location_terms_used"],
+             "location_evidence_links": c["location_evidence"], "uniprot_location_terms": info["location_terms"]}
+    print(f"[uniprot] {stats['proteins']} human Swiss-Prot proteins ({len(info['missing'])} no longer in UniProt; "
+          f"{stats['other_uniprot_entries_cited_as_evidence']} other UniProt entries cited as evidence), "
+          f"{with_ann} with a subcellular location annotation, {c['triples']} triples -> {out.name}")
+    return stats

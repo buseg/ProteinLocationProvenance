@@ -4,13 +4,20 @@ fuseki:
   user: admin
   password_env: FUSEKI_ADMIN_PASSWORD  # read from .env, never stored here
 graphs:
-  go_cc: urn:locx:graph:go-cc
+  go: urn:locx:graph:go                  # official GO release go-basic.owl 2026-07-26, unmodified (DECISIONS 2026-11-19)
+  eco: urn:locx:graph:eco                # official ECO release 2026-07-10, unmodified
+  ro: urn:locx:graph:ro                  # official RO release 2026-09-04, unmodified
+  uniprot_locations: urn:locx:graph:uniprot-locations   # UniProt's subcellular location vocabulary, as published
+  uniprot_core: urn:locx:graph:uniprot-core             # UniProt's core ontology (up: vocabulary), as published
   goa: urn:locx:graph:goa-human
   uniprot: urn:locx:graph:uniprot-human
   papers: urn:locx:graph:papers
   assertions: urn:locx:graph:assertions
   verdicts: urn:locx:graph:verdicts
   abstracts: urn:locx:graph:abstracts   # text the LLM read (PubTator title + abstract), for the demo (DECISIONS 2026-11-17)
+  ontology: urn:locx:graph:ontology     # the locx OWL ontology, ontology/locx.owl.ttl (hand-maintained source of truth)
+  support: urn:locx:graph:support       # derived: author groups and support counts per assertion (own activity)
+  inferred: urn:locx:graph:inferred     # derived: OWL 2 RL inferences over ontology + data (make reason)
   run_prefix: urn:locx:graph:run/
 llm:
   model: google/gemma-4-31B-it-qat-w4a16-ct

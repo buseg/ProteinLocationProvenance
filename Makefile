@@ -3,7 +3,7 @@ SHELL := /bin/bash
 MM    ?= $(HOME)/.local/bin/micromamba
 GPU   := $(shell sed -n 's/^ *gpu: *\([0-9]*\).*/\1/p' config.yaml)
 
-.PHONY: env kg corpus candidates fuseki-build fuseki-up fuseki-down fuseki-status fuseki-smoke fuseki-backup vllm-env serve serve-stop serve-smoke serve2 serve2-stop serve2-smoke extract-dev extract validate rdf load verdicts silver-eval precision-sample precision report demo demo-stop demo-check demo-export demo-bundle abstracts schema
+.PHONY: env kg corpus candidates fuseki-build fuseki-up fuseki-down fuseki-status fuseki-smoke fuseki-backup vllm-env serve serve-stop serve-smoke serve2 serve2-stop serve2-smoke extract-dev extract validate rdf load verdicts silver-eval precision-sample precision report demo demo-stop demo-check demo-export demo-bundle abstracts schema ontology reason check-ontology support
 
 ## M0 — pipeline env (micromamba, conda-forge only)
 env:
@@ -51,7 +51,13 @@ rdf:  ; $(PY) -m locx.kg.claims_rdf build $(ARGS)
 load: ; $(PY) -m locx.kg.claims_rdf load $(ARGS)
 abstracts: ; $(PY) -m locx.kg.abstracts_rdf build && $(PY) -m locx.kg.abstracts_rdf load   # text for the demo's abstract view
 
-## M8 — verdicts against GOA + aggregation (author groups, counts)
+## Ontology (hand-maintained ontology/locx.owl.ttl is the source of truth; DECISIONS 2026-11-19)
+ontology: ; $(PY) -c "from locx.kg import fuseki; from locx import ontology as O; from locx.config import CFG; fuseki.load(CFG['graphs']['ontology'], O.PATH, replace=True)"   # load it as graph urn:locx:graph:ontology
+reason:   ; $(PY) scripts/reason.py $(ARGS)          # OWL 2 RL inferences -> graph inferred + consistency checks (reports/reasoning.json)
+check-ontology: ; $(PY) scripts/check_ontology.py $(ARGS)   # data vs ontology, outside IDs, HermiT, Protégé sample (reports/ontology.json)
+
+## M8 — support (author groups, counts) and verdicts against GOA, each its own PROV activity
+support:  ; $(PY) -m locx.analysis.support $(ARGS)
 verdicts: ; $(PY) -m locx.analysis.verdicts $(ARGS)
 
 ## M9 — evaluation (silver recall, precision sheet)

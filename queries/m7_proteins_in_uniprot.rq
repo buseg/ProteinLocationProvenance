@@ -1,0 +1,10 @@
+# M7 sanity (run by `make load`): protein IRIs of mentions and assertions that the uniprot-human graph does not
+# type as up:Protein (UniProt RDF from the SPARQL endpoint). Expected: 0.
+PREFIX locx: <http://example.org/locx/>
+PREFIX up:   <http://purl.uniprot.org/core/>
+SELECT (COUNT(DISTINCT ?p) AS ?missing)
+WHERE {
+  { GRAPH <urn:locx:graph:assertions> { ?a locx:protein ?p } }
+  UNION { GRAPH <%RUN_GRAPH%> { ?m locx:protein ?p } }
+  FILTER NOT EXISTS { GRAPH <urn:locx:graph:uniprot-human> { ?p a up:Protein } }
+}

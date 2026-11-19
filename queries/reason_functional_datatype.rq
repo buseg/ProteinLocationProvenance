@@ -1,0 +1,11 @@
+# make reason, consistency (OWL 2 RL prp-fp with literals): a subject with two different values of a functional
+# datatype property of the locx ontology, in any graph. Expected: no rows.
+PREFIX owl: <http://www.w3.org/2002/07/owl#>
+SELECT ?s ?p ?v1 ?v2
+WHERE {
+  GRAPH <urn:locx:graph:ontology> { ?p a owl:FunctionalProperty , owl:DatatypeProperty . }
+  GRAPH ?g { ?s ?p ?v1 }
+  GRAPH ?h { ?s ?p ?v2 }
+  FILTER (?v1 != ?v2)
+}
+LIMIT 100

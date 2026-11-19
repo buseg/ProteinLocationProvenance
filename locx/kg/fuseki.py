@@ -48,6 +48,11 @@ def sha256(path: Path) -> str:
     return h.hexdigest()
 
 
+def content_type(path: Path) -> str:
+    return {".owl": "application/rdf+xml", ".rdf": "application/rdf+xml", ".nt": "application/n-triples"}.get(
+        Path(path).suffix, "text/turtle")
+
+
 def load(graph: str, path: Path, replace: bool = False) -> int:
     """PUT a Turtle file into a named graph. Skips if this exact file is already loaded;
     refuses to overwrite a non-empty graph with different content unless replace=True."""
@@ -63,7 +68,7 @@ def load(graph: str, path: Path, replace: bool = False) -> int:
     t = time.time()
     with open(path, "rb") as f:
         r = requests.put(f"{BASE}/data", params={"graph": graph}, data=f, auth=_auth(),
-                         headers={"Content-Type": "text/turtle"}, timeout=3600)
+                         headers={"Content-Type": content_type(path)}, timeout=3600)
     r.raise_for_status()
     n = count(graph)
     manifest[graph] = {"file": path.name, "sha256": digest, "triples": n,
@@ -77,7 +82,7 @@ def append(graph: str, path: Path) -> None:
     """POST (add) a Turtle file to a named graph without touching what is already there."""
     with open(path, "rb") as f:
         r = requests.post(f"{BASE}/data", params={"graph": graph}, data=f, auth=_auth(),
-                          headers={"Content-Type": "text/turtle"}, timeout=3600)
+                          headers={"Content-Type": content_type(path)}, timeout=3600)
     r.raise_for_status()
 
 

@@ -1,0 +1,16 @@
+# make reason, consistency (OWL 2 RL cax-adc): an individual typed, asserted or inferred, with two classes that the
+# locx ontology declares disjoint (owl:AllDisjointClasses). Expected: no rows.
+PREFIX owl: <http://www.w3.org/2002/07/owl#>
+PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+SELECT ?x ?c1 ?c2
+WHERE {
+  GRAPH <urn:locx:graph:ontology> {
+    ?d a owl:AllDisjointClasses ; owl:members ?list .
+    ?list rdf:rest*/rdf:first ?c1 .
+    ?list rdf:rest*/rdf:first ?c2 .
+    FILTER (STR(?c1) < STR(?c2))
+  }
+  GRAPH ?g1 { ?x a ?c1 }
+  GRAPH ?g2 { ?x a ?c2 }
+}
+LIMIT 100

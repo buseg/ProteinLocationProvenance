@@ -1,36 +1,40 @@
-# locx quality shapes (M7, hybrid validation; DECISIONS 2026-11-16).
-# Run by locx/kg/claims_rdf.py on the run graph + the GO CC graph. Each result becomes a flag on the
-# claim: V5 -> impossible_location (makes the claim invalid), V6 -> too_generic (warning only).
-# The GO IDs below must equal NON_HUMAN_ROOTS / TOO_GENERIC in locx/kg/go_cc.py, which are verified by
-# label against go-basic.obo; claims_rdf.py checks both before validating.
+# locx quality shapes (SPEC M6 V5, V6): run on the provisional run graph together with the locx ontology and the
+# cellular-component part of the official GO release (locx/kg/claims_rdf.py). Their results become claim flags.
+# Which GO terms are too generic or non-human is stated in the ontology (section 10), not here; GO's part_of is an
+# OWL restriction (rdfs:subClassOf [owl:onProperty part_of ; owl:someValuesFrom X]), so the hierarchy path is
+# (rdfs:subClassOf | rdfs:subClassOf/owl:someValuesFrom)* (on CC terms the only restriction property is part_of).
+# A claim's location is an individual typed with its GO class (no punning), so the GO class is locx:location/rdf:type.
+# SHACL-SPARQL forbids VALUES in constraints; these need none.
 
 @prefix sh:   <http://www.w3.org/ns/shacl#> .
 @prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
 @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix owl:  <http://www.w3.org/2002/07/owl#> .
 @prefix obo:  <http://purl.obolibrary.org/obo/> .
 @prefix locx: <http://example.org/locx/> .
 
 locx:shapesPrefixes
     sh:declare [ sh:prefix "locx" ; sh:namespace "http://example.org/locx/"^^xsd:anyURI ] ,
                [ sh:prefix "obo"  ; sh:namespace "http://purl.obolibrary.org/obo/"^^xsd:anyURI ] ,
-               [ sh:prefix "rdfs" ; sh:namespace "http://www.w3.org/2000/01/rdf-schema#"^^xsd:anyURI ] .
+               [ sh:prefix "owl"  ; sh:namespace "http://www.w3.org/2002/07/owl#"^^xsd:anyURI ] ,
+               [ sh:prefix "rdfs" ; sh:namespace "http://www.w3.org/2000/01/rdf-schema#"^^xsd:anyURI ] ,
+               [ sh:prefix "rdf"  ; sh:namespace "http://www.w3.org/1999/02/22-rdf-syntax-ns#"^^xsd:anyURI ] .
 
-# V5: the location is (a part or subclass of) a compartment that human cells do not have.
+# V5: the location lies under a compartment human cells do not have (invalidates the claim).
 locx:ImpossibleLocationShape
     a sh:NodeShape ;
-    sh:targetClass locx:Mention ;
+    sh:targetClass locx:Claim ;
     sh:severity sh:Violation ;
     sh:sparql [
         a sh:SPARQLConstraint ;
         sh:prefixes locx:shapesPrefixes ;
-        sh:message "V5 impossible_location: {?loc} lies under the non-human compartment {?root}" ;
+        sh:message "V5 impossible location: {?loc} lies under the non-human compartment {?root}" ;
         sh:select """
             SELECT $this ?loc ?root
             WHERE {
-                $this locx:location ?loc .
-                ?loc (rdfs:subClassOf|obo:BFO_0000050)* ?root .
-                FILTER (?root IN (obo:GO_0009536, obo:GO_0005618, obo:GO_0009579, obo:GO_0042597))
-                # plastid, cell wall, thylakoid, periplasmic space
+                $this locx:location/rdf:type ?loc .   # the location individual's GO class
+                ?loc (rdfs:subClassOf|rdfs:subClassOf/owl:someValuesFrom)* ?root .
+                ?root locx:nonHumanCompartmentRoot true .
             }
         """ ;
     ] .
@@ -38,18 +42,17 @@ locx:ImpossibleLocationShape
 # V6: the location is too generic to support a verdict (warning; the claim stays valid).
 locx:TooGenericShape
     a sh:NodeShape ;
-    sh:targetClass locx:Mention ;
+    sh:targetClass locx:Claim ;
     sh:severity sh:Warning ;
     sh:sparql [
         a sh:SPARQLConstraint ;
         sh:prefixes locx:shapesPrefixes ;
-        sh:message "V6 too_generic: {?loc} is too generic for a verdict" ;
+        sh:message "V6 too generic: {?loc} is too generic for a verdict" ;
         sh:select """
             SELECT $this ?loc
             WHERE {
-                $this locx:location ?loc .
-                FILTER (?loc IN (obo:GO_0005575, obo:GO_0110165, obo:GO_0005622))
-                # cellular_component, cellular anatomical structure, intracellular anatomical structure
+                $this locx:location/rdf:type ?loc .   # the location individual's GO class
+                ?loc locx:tooGeneric true .
             }
         """ ;
     ] .

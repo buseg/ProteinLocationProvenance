@@ -1,0 +1,639 @@
+# =====================================================================================================================
+#  locx ontology — provenance-aware protein subcellular localization claims
+#
+#  The vocabulary of the locx knowledge graph: classes, properties and fixed lists of values for protein localization
+#  statements, their evidence and provenance. The software that builds and checks the graph takes its terms from this
+#  file. The imported GO, ECO, RO and UniProt core ontologies resolve to local copies through catalog-v001.xml when it is present.
+#
+#  Sections: 1 header · 2 outside vocabularies (declared, not redefined) · 3 statements (Claim, CuratedAnnotation,
+#  Assertion) · 4 text and papers · 5 people · 6 runs and corpus · 7 derived results (support, verdicts) ·
+#  8 value sets · 9 GO evidence categories · 10 statements about GO terms · 11 disjointness
+#
+#  Conventions: locx classes and properties get rdfs:label + rdfs:comment. Every fixed list of values is one OWL class
+#  with exactly its individuals (owl:oneOf, all different); each value has rdfs:label, rdfs:comment and locx:token (the
+#  string the extraction output uses for it). Terms of other ontologies are only declared (type + rdfs:isDefinedBy); an outside class
+#  gets a locx:usageNote saying how locx uses it, never a new definition, domain or range. No punning: a statement's location is an individual typed with its
+#  GO class and its evidence an individual typed with its ECO class (the GO-CAM pattern), so locx:location and
+#  locx:evidence have real ranges and the reasoner uses the GO and ECO hierarchies. RO relations and annotation-
+#  extension terms (classes of ontologies we do not load) are recorded with annotation properties.
+# =====================================================================================================================
+
+@prefix locx:    <http://example.org/locx/> .
+@prefix owl:     <http://www.w3.org/2002/07/owl#> .
+@prefix rdf:     <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs:    <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:     <http://www.w3.org/2001/XMLSchema#> .
+@prefix dcterms: <http://purl.org/dc/terms/> .
+@prefix vann:    <http://purl.org/vocab/vann/> .
+@prefix obo:     <http://purl.obolibrary.org/obo/> .
+@prefix up:      <http://purl.uniprot.org/core/> .
+@prefix prov:    <http://www.w3.org/ns/prov#> .
+@prefix fabio:   <http://purl.org/spar/fabio/> .
+@prefix frbr:    <http://purl.org/vocab/frbr/core#> .
+@prefix prism:   <http://prismstandard.org/namespaces/basic/2.0/> .
+@prefix c4o:     <http://purl.org/spar/c4o/> .
+@prefix foaf:    <http://xmlns.com/foaf/0.1/> .
+@prefix oa:      <http://www.w3.org/ns/oa#> .
+@prefix skos:    <http://www.w3.org/2004/02/skos/core#> .
+
+# ---------------------------------------------------------------------------------------------------------------------
+# 1. Header
+# ---------------------------------------------------------------------------------------------------------------------
+
+locx:ontology a owl:Ontology ;
+    owl:versionInfo "2026-11-19" ;
+    dcterms:title "locx ontology: provenance-aware protein localization claims"@en ;
+    dcterms:description """Protein subcellular localization claims extracted by a local LLM from PubMed abstracts, grounded to UniProt and the GO cellular component ontology, stored with their text evidence (W3C Web Annotation), papers, authors and extraction run (PROV-O), compared with GOA curation. Reuses GO, ECO, RO, UniProt core, PROV-O, FaBiO, FRBR, PRISM, C4O, FOAF, Dublin Core and Web Annotation terms without redefining them."""@en ;
+    dcterms:creator "Buse Giledereli" ;
+    vann:preferredNamespacePrefix "locx" ;
+    vann:preferredNamespaceUri "http://example.org/locx/" ;
+    # official releases, loaded unmodified as named graphs go / eco / ro (catalog-v001.xml maps them to local copies)
+    owl:imports <http://purl.obolibrary.org/obo/go/go-basic.owl> ,   # release 2026-07-26 (same as the grounding dictionary)
+                <http://purl.obolibrary.org/obo/eco.owl> ,           # release 2026-07-10
+                <http://purl.obolibrary.org/obo/ro.owl> ,            # release 2026-09-04
+                <http://purl.uniprot.org/core/> .                    # UniProt core ontology (the up: vocabulary)
+
+dcterms:title a owl:AnnotationProperty .
+dcterms:description a owl:AnnotationProperty .
+dcterms:creator a owl:AnnotationProperty .
+vann:preferredNamespacePrefix a owl:AnnotationProperty .
+vann:preferredNamespaceUri a owl:AnnotationProperty .
+locx:token a owl:AnnotationProperty ; rdfs:label "token"@en ;
+    rdfs:comment "On a value: the string the extraction output uses for it (e.g. \"not_stated\"), so that the output can be mapped to the value."@en .
+locx:taxon a owl:AnnotationProperty ; rdfs:label "taxon"@en ;
+    rdfs:comment "On an organism value: the NCBI Taxonomy class it means."@en .
+locx:usageNote a owl:AnnotationProperty ; rdfs:label "usage note"@en ;
+    rdfs:comment "On a class or property of another ontology: how locx uses it (never a redefinition)."@en .
+
+# ---------------------------------------------------------------------------------------------------------------------
+# 2. Outside vocabularies: declared with their OWL type, never redefined
+# ---------------------------------------------------------------------------------------------------------------------
+
+# UniProt core (graph uniprot-human is UniProt's own RDF; graph uniprot-locations its location vocabulary)
+up:Protein a owl:Class ; rdfs:label "protein"@en ; rdfs:isDefinedBy <http://purl.uniprot.org/core/> ;
+    locx:usageNote "A UniProtKB entry. Graph uniprot-human holds the human Swiss-Prot entries in UniProt's vocabulary; GOA rows may point to other UniProtKB entries."@en .
+up:Gene a owl:Class ; rdfs:label "gene"@en ; rdfs:isDefinedBy <http://purl.uniprot.org/core/> ;
+    locx:usageNote "The gene encoding a protein: symbol as skos:prefLabel, synonyms as skos:altLabel."@en .
+up:Subcellular_Location_Annotation a owl:Class ; rdfs:label "subcellular location annotation"@en ; rdfs:isDefinedBy <http://purl.uniprot.org/core/> ;
+    locx:usageNote "UniProt's curated subcellular location of a protein (free text, UniProt location terms, ECO evidence). Kept for comparison with the extracted claims."@en .
+up:Cellular_Component a owl:Class ; rdfs:label "UniProt subcellular location term"@en ; rdfs:isDefinedBy <http://purl.uniprot.org/core/> ;
+    locx:usageNote "A term of UniProt's subcellular location vocabulary (graph uniprot-locations); most have locx:taxon to a GO term."@en .
+up:Topology a owl:Class ; rdfs:isDefinedBy <http://purl.uniprot.org/core/> .
+up:Orientation a owl:Class ; rdfs:isDefinedBy <http://purl.uniprot.org/core/> .
+up:mnemonic a owl:DatatypeProperty ; rdfs:isDefinedBy <http://purl.uniprot.org/core/> .
+up:reviewed a owl:DatatypeProperty ; rdfs:isDefinedBy <http://purl.uniprot.org/core/> .
+up:fullName a owl:DatatypeProperty ; rdfs:isDefinedBy <http://purl.uniprot.org/core/> .
+up:shortName a owl:DatatypeProperty ; rdfs:isDefinedBy <http://purl.uniprot.org/core/> .
+up:alias a owl:DatatypeProperty ; rdfs:isDefinedBy <http://purl.uniprot.org/core/> .
+up:organism a owl:ObjectProperty ; rdfs:isDefinedBy <http://purl.uniprot.org/core/> .
+up:recommendedName a owl:ObjectProperty ; rdfs:isDefinedBy <http://purl.uniprot.org/core/> .
+up:alternativeName a owl:ObjectProperty ; rdfs:isDefinedBy <http://purl.uniprot.org/core/> .
+up:encodedBy a owl:ObjectProperty ; rdfs:isDefinedBy <http://purl.uniprot.org/core/> .
+up:database a owl:ObjectProperty ; rdfs:isDefinedBy <http://purl.uniprot.org/core/> .
+up:annotation a owl:ObjectProperty ; rdfs:isDefinedBy <http://purl.uniprot.org/core/> .
+up:locatedIn a owl:ObjectProperty ; rdfs:isDefinedBy <http://purl.uniprot.org/core/> .
+up:cellularComponent a owl:ObjectProperty ; rdfs:isDefinedBy <http://purl.uniprot.org/core/> .
+up:topology a owl:ObjectProperty ; rdfs:isDefinedBy <http://purl.uniprot.org/core/> .
+up:orientation a owl:ObjectProperty ; rdfs:isDefinedBy <http://purl.uniprot.org/core/> .
+up:partOf a owl:ObjectProperty ; rdfs:isDefinedBy <http://purl.uniprot.org/core/> .
+up:attribution a owl:ObjectProperty ; rdfs:isDefinedBy <http://purl.uniprot.org/core/> .
+up:evidence a owl:ObjectProperty ; rdfs:isDefinedBy <http://purl.uniprot.org/core/> .
+up:source a owl:ObjectProperty ; rdfs:isDefinedBy <http://purl.uniprot.org/core/> .
+# terms UniProt's own RDF uses: gene symbol and synonyms (SKOS labels), citation -> PubMed page (FOAF)
+skos:prefLabel a owl:AnnotationProperty ; rdfs:isDefinedBy <http://www.w3.org/2004/02/skos/core> ;
+    locx:usageNote "Used by UniProt's RDF for a gene's symbol."@en .
+skos:altLabel a owl:AnnotationProperty ; rdfs:isDefinedBy <http://www.w3.org/2004/02/skos/core> ;
+    locx:usageNote "Used by UniProt's RDF for a gene's synonyms."@en .
+skos:exactMatch a owl:AnnotationProperty ; rdfs:isDefinedBy <http://www.w3.org/2004/02/skos/core> ;
+    locx:usageNote "Used by UniProt's location vocabulary to link a UniProt location term to its GO term."@en .
+foaf:primaryTopicOf a owl:ObjectProperty ; rdfs:isDefinedBy <http://xmlns.com/foaf/0.1/> ;
+    locx:usageNote "Used by UniProt's RDF to link a citation to its PubMed page."@en .
+
+# GO and ECO roots (imported; declared here so the file also stands alone)
+obo:GO_0005575 a owl:Class ; rdfs:isDefinedBy <http://purl.obolibrary.org/obo/go.owl> ;
+    locx:usageNote "cellular_component: the range of locx:location. A statement's location is an individual of one of its subclasses."@en .
+obo:ECO_0000000 a owl:Class ; rdfs:isDefinedBy <http://purl.obolibrary.org/obo/eco.owl> ;
+    locx:usageNote "evidence: the range of locx:evidence. A GOA row's evidence is an individual of one of its subclasses."@en .
+
+# PROV-O
+prov:Entity a owl:Class ; rdfs:isDefinedBy <http://www.w3.org/ns/prov-o#> .
+prov:Activity a owl:Class ; rdfs:isDefinedBy <http://www.w3.org/ns/prov-o#> ;
+    locx:usageNote "The superclass of the four kinds of activity that produce the graph's entities: corpus building, extraction runs, support computations and verdict computations."@en .
+prov:Agent a owl:Class ; rdfs:isDefinedBy <http://www.w3.org/ns/prov-o#> .
+prov:SoftwareAgent a owl:Class ; rdfs:subClassOf prov:Agent ; rdfs:isDefinedBy <http://www.w3.org/ns/prov-o#> ;
+    locx:usageNote "The LLM that performed an extraction run."@en .
+prov:Collection a owl:Class ; rdfs:subClassOf prov:Entity ; rdfs:isDefinedBy <http://www.w3.org/ns/prov-o#> ;
+    locx:usageNote "A corpus sample (dev, silver, discovery): the papers one corpus query selected."@en .
+prov:wasDerivedFrom a owl:ObjectProperty ; rdfs:isDefinedBy <http://www.w3.org/ns/prov-o#> .
+prov:wasGeneratedBy a owl:ObjectProperty ; rdfs:isDefinedBy <http://www.w3.org/ns/prov-o#> .
+prov:wasAssociatedWith a owl:ObjectProperty ; rdfs:isDefinedBy <http://www.w3.org/ns/prov-o#> .
+prov:used a owl:ObjectProperty ; rdfs:isDefinedBy <http://www.w3.org/ns/prov-o#> .
+prov:hadMember a owl:ObjectProperty ; rdfs:isDefinedBy <http://www.w3.org/ns/prov-o#> .
+prov:startedAtTime a owl:DatatypeProperty ; rdfs:isDefinedBy <http://www.w3.org/ns/prov-o#> .
+prov:endedAtTime a owl:DatatypeProperty ; rdfs:isDefinedBy <http://www.w3.org/ns/prov-o#> .
+
+# SPAR: FaBiO, FRBR, PRISM, C4O
+fabio:JournalArticle a owl:Class ; rdfs:isDefinedBy <http://purl.org/spar/fabio> ;
+    locx:usageNote "A PubMed paper in the corpus; IRI = its PubMed page."@en .
+fabio:Journal a owl:Class ; rdfs:isDefinedBy <http://purl.org/spar/fabio> ;
+    locx:usageNote "The journal a paper appeared in; IRI = its NLM Catalog record."@en .
+fabio:Abstract a owl:Class ; rdfs:isDefinedBy <http://purl.org/spar/fabio> ;
+    locx:usageNote "The text the LLM read for a paper (PubTator title + abstract); the source of a claim's evidence sentence."@en .
+c4o:GlobalCitationCount a owl:Class ; rdfs:isDefinedBy <http://purl.org/spar/c4o> ;
+    locx:usageNote "A paper's citation count on a date, from a source (Europe PMC)."@en .
+c4o:BibliographicInformationSource a owl:Class ; rdfs:isDefinedBy <http://purl.org/spar/c4o> ;
+    locx:usageNote "Where a citation count comes from (Europe PMC)."@en .
+frbr:partOf a owl:ObjectProperty ; rdfs:isDefinedBy <http://purl.org/vocab/frbr/core> .
+fabio:hasNationalLibraryOfMedicineJournalId a owl:DatatypeProperty ; rdfs:isDefinedBy <http://purl.org/spar/fabio> .
+fabio:hasNLMJournalTitleAbbreviation a owl:DatatypeProperty ; rdfs:isDefinedBy <http://purl.org/spar/fabio> .
+prism:doi a owl:DatatypeProperty ; rdfs:isDefinedBy <http://prismstandard.org/namespaces/basic/2.0/> .
+prism:issn a owl:DatatypeProperty ; rdfs:isDefinedBy <http://prismstandard.org/namespaces/basic/2.0/> .
+prism:eIssn a owl:DatatypeProperty ; rdfs:isDefinedBy <http://prismstandard.org/namespaces/basic/2.0/> .
+c4o:hasContent a owl:DatatypeProperty ; rdfs:isDefinedBy <http://purl.org/spar/c4o> .
+c4o:hasGlobalCitationFrequency a owl:ObjectProperty ; rdfs:isDefinedBy <http://purl.org/spar/c4o> .
+c4o:hasGlobalCountValue a owl:DatatypeProperty ; rdfs:isDefinedBy <http://purl.org/spar/c4o> .
+c4o:hasGlobalCountDate a owl:DatatypeProperty ; rdfs:isDefinedBy <http://purl.org/spar/c4o> .
+c4o:hasGlobalCountSource a owl:ObjectProperty ; rdfs:isDefinedBy <http://purl.org/spar/c4o> .
+
+# W3C Web Annotation
+oa:SpecificResource a owl:Class ; rdfs:isDefinedBy <http://www.w3.org/ns/oa#> ;
+    locx:usageNote "The sentence a claim was extracted from: a span of an abstract."@en .
+oa:TextPositionSelector a owl:Class ; rdfs:isDefinedBy <http://www.w3.org/ns/oa#> .
+oa:TextQuoteSelector a owl:Class ; rdfs:isDefinedBy <http://www.w3.org/ns/oa#> .
+oa:hasTarget a owl:ObjectProperty ; rdfs:isDefinedBy <http://www.w3.org/ns/oa#> .
+oa:hasSource a owl:ObjectProperty ; rdfs:isDefinedBy <http://www.w3.org/ns/oa#> .
+oa:hasSelector a owl:ObjectProperty ; rdfs:isDefinedBy <http://www.w3.org/ns/oa#> .
+oa:start a owl:DatatypeProperty ; rdfs:isDefinedBy <http://www.w3.org/ns/oa#> .
+oa:end a owl:DatatypeProperty ; rdfs:isDefinedBy <http://www.w3.org/ns/oa#> .
+oa:exact a owl:DatatypeProperty ; rdfs:isDefinedBy <http://www.w3.org/ns/oa#> .
+
+# FOAF, Dublin Core
+foaf:Person a owl:Class ; rdfs:isDefinedBy <http://xmlns.com/foaf/0.1/> ;
+    locx:usageNote "An author, identified by OpenAlex (disambiguated author ID)."@en .
+foaf:Organization a owl:Class ; rdfs:isDefinedBy <http://xmlns.com/foaf/0.1/> ;
+    locx:usageNote "A research institution, identified by ROR (via OpenAlex)."@en .
+foaf:name a owl:DatatypeProperty ; rdfs:isDefinedBy <http://xmlns.com/foaf/0.1/> .
+dcterms:date a owl:DatatypeProperty ; rdfs:isDefinedBy <http://purl.org/dc/terms/> .
+dcterms:source a owl:ObjectProperty ; rdfs:isDefinedBy <http://purl.org/dc/terms/> .
+
+# ---------------------------------------------------------------------------------------------------------------------
+# 3. Localization statements: claims (LLM), curated annotations (GOA), and the deduplicated assertion
+# ---------------------------------------------------------------------------------------------------------------------
+
+locx:LocalizationStatement a owl:Class ;
+    rdfs:subClassOf prov:Entity ;
+    rdfs:label "localization statement"@en ;
+    rdfs:comment "A source states that a protein is, or is not, in a cellular location, with a relation (RO) and a GO cellular component term. Claims (LLM, from a sentence) and curated annotations (GOA rows) are both localization statements; they differ in who states it and what evidence backs it."@en .
+
+locx:Claim a owl:Class ;
+    rdfs:subClassOf locx:LocalizationStatement ;
+    locx:statesRelation obo:RO_0001025 ;   # every claim states "located in": claims are extracted as "is / is not in"
+    rdfs:label "claim"@en ;
+    rdfs:comment "One localization claim as the LLM extracted it from one sentence of one abstract in one extraction run, with its evidence sentence, certainty, source type, context and validation result. A valid claim asserts an assertion."@en .
+
+locx:CuratedAnnotation a owl:Class ;
+    rdfs:subClassOf locx:LocalizationStatement ;
+    rdfs:label "curated annotation"@en ;
+    rdfs:comment "One line of the GOA human annotation file (cellular component aspect): a curator's statement that a protein is, or is not, at a GO location, with its relation, ECO evidence and references."@en .
+
+locx:Assertion a owl:Class ;
+    rdfs:subClassOf prov:Entity ;
+    rdfs:label "assertion"@en ;
+    rdfs:comment "The content of a localization statement without its source: protein, relation, GO term and polarity, stored once and shared by every claim that makes it, so that papers and author groups can be counted per statement and compared with GOA once."@en .
+
+locx:Context a owl:Class ;
+    rdfs:label "context"@en ;
+    rdfs:comment "A context in which a localization statement holds, for example only in one cell type, tissue, cell-cycle phase or under a treatment. A statement can have several contexts (locx:hasContext)."@en .
+
+locx:GOAContext a owl:Class ;
+    rdfs:subClassOf locx:Context ;
+    rdfs:label "GOA context"@en ;
+    rdfs:comment "The context of a GOA annotation (GO calls it an annotation extension): one or more relation(term) parts (locx:ContextPart) that hold together, e.g. part_of(CL:0000540) = only in neurons, part_of(UBERON:0001088) = only in that tissue, exists_during(GO:...) = only during that process. A GOA line can give several alternative contexts; each is its own GOA context."@en .
+
+locx:FreeTextContext a owl:Class ;
+    rdfs:subClassOf locx:Context ;
+    rdfs:label "free-text context"@en ;
+    rdfs:comment "A context a claim's sentence states in words, as the language model extracted it: a condition ('under starvation', 'during mitosis') or a cell type or line ('HeLa'), with its kind (locx:contextKind). Not yet grounded to ontology terms; grounding would give it the same relation(term) parts as a GOA context."@en .
+
+locx:ContextPart a owl:Class ;
+    rdfs:label "context part"@en ;
+    rdfs:comment "One relation(term) pair of a context, e.g. part_of + CL:0000540."@en .
+
+# shared by all localization statements and assertions
+locx:protein a owl:ObjectProperty , owl:FunctionalProperty ;
+    rdfs:label "protein"@en ;
+    rdfs:comment "The protein (UniProtKB entry) the statement is about."@en ;
+    rdfs:domain [ a owl:Class ; owl:unionOf ( locx:LocalizationStatement locx:Assertion ) ] ;
+    rdfs:range up:Protein .
+
+locx:relation a owl:AnnotationProperty ;
+    rdfs:label "relation"@en ;
+    rdfs:comment "How the protein relates to the location, as an RO/BFO relation: located in (RO:0001025) for every claim (locx:statesRelation on locx:Claim); for GOA rows the annotation's qualifier: located in, part of (BFO:0000050), is active in (RO:0002432) or colocalizes with (RO:0002325). An annotation property: its value is an RO property, which an object property could only reach by punning."@en .
+locx:statesRelation a owl:AnnotationProperty ;
+    rdfs:label "states relation"@en ;
+    rdfs:comment "On a statement class: the RO relation every statement of the class states (each statement also carries it as locx:relation)."@en .
+
+locx:location a owl:ObjectProperty , owl:FunctionalProperty ;
+    rdfs:label "location"@en ;
+    rdfs:comment "Where the statement puts the protein: an individual typed with a GO cellular component class (e.g. 'a nucleus', typed obo:GO_0005634), one per statement, as in GO-CAM models. The reasoner infers its ancestor types from GO."@en ;
+    rdfs:domain [ a owl:Class ; owl:unionOf ( locx:LocalizationStatement locx:Assertion ) ] ;
+    rdfs:range obo:GO_0005575 .
+
+locx:polarity a owl:ObjectProperty , owl:FunctionalProperty ;
+    rdfs:label "polarity"@en ;
+    rdfs:comment "Whether the protein is (present) or is not (absent) at the location. For GOA rows, absent = the NOT qualifier."@en ;
+    rdfs:domain [ a owl:Class ; owl:unionOf ( locx:LocalizationStatement locx:Assertion ) ] ;
+    rdfs:range locx:Polarity .
+
+# claims
+locx:asserts a owl:ObjectProperty , owl:FunctionalProperty ;
+    rdfs:label "asserts"@en ; rdfs:comment "The assertion a valid claim supports."@en ;
+    rdfs:domain locx:Claim ; rdfs:range locx:Assertion .
+locx:evidenceSentence a owl:ObjectProperty , owl:FunctionalProperty ;
+    rdfs:subPropertyOf oa:hasTarget ;
+    rdfs:label "evidence sentence"@en ;
+    rdfs:comment "The sentence the claim was extracted from, as a W3C Web Annotation specific resource: the abstract (oa:hasSource) with a TextPositionSelector (character offsets) and a TextQuoteSelector (the sentence text)."@en ;
+    rdfs:domain locx:Claim ; rdfs:range oa:SpecificResource .
+locx:claimId a owl:DatatypeProperty , owl:FunctionalProperty ;
+    rdfs:label "claim id"@en ; rdfs:comment "Stable hash of the extracted claim."@en ; rdfs:domain locx:Claim ; rdfs:range xsd:string .
+locx:sentenceId a owl:DatatypeProperty , owl:FunctionalProperty ;
+    rdfs:label "sentence id"@en ; rdfs:comment "The sentence's id in the abstract as the LLM saw it (S1, S2 ...)."@en ; rdfs:domain locx:Claim ; rdfs:range xsd:string .
+locx:proteinMention a owl:DatatypeProperty ;
+    rdfs:label "protein mention"@en ; rdfs:comment "How the protein is written in the sentence (or an earlier one)."@en ; rdfs:domain locx:Claim ; rdfs:range xsd:string .
+locx:locationMention a owl:DatatypeProperty ;
+    rdfs:label "location mention"@en ; rdfs:comment "How the location is written in the sentence (or an earlier one)."@en ; rdfs:domain locx:Claim ; rdfs:range xsd:string .
+locx:otherLocationText a owl:DatatypeProperty , owl:FunctionalProperty ;
+    rdfs:label "other location text"@en ; rdfs:comment "The free-text location the LLM gave when no candidate fitted (OTHER)."@en ; rdfs:domain locx:Claim ; rdfs:range xsd:string .
+locx:groundingMethod a owl:ObjectProperty , owl:FunctionalProperty ;
+    rdfs:label "grounding method"@en ; rdfs:comment "How a free-text location was matched to GO."@en ; rdfs:domain locx:Claim ; rdfs:range locx:GroundingMethod .
+locx:certainty a owl:ObjectProperty , owl:FunctionalProperty ;
+    rdfs:label "certainty"@en ; rdfs:comment "How firmly the sentence states the claim (stated / hedged). Independent of the source type: a finding can be hedged."@en ;
+    rdfs:domain locx:Claim ; rdfs:range locx:Certainty .
+locx:sourceType a owl:ObjectProperty , owl:FunctionalProperty ;
+    rdfs:label "source type"@en ; rdfs:comment "Whether the sentence reports this paper's own result (finding) or prior knowledge (background). Independent of the certainty."@en ;
+    rdfs:domain locx:Claim ; rdfs:range locx:SourceType .
+locx:method a owl:ObjectProperty , owl:FunctionalProperty ;
+    rdfs:label "method"@en ; rdfs:comment "The experimental method named for the claim."@en ; rdfs:domain locx:Claim ; rdfs:range locx:Method .
+locx:organism a owl:ObjectProperty , owl:FunctionalProperty ;
+    rdfs:label "organism"@en ; rdfs:comment "The organism the claim was observed in."@en ; rdfs:domain locx:Claim ; rdfs:range locx:Organism .
+locx:flag a owl:ObjectProperty ;
+    rdfs:label "flag"@en ; rdfs:comment "A check result on the claim; an invalidating flag makes the claim invalid."@en ; rdfs:domain locx:Claim ; rdfs:range locx:QualityFlag .
+locx:valid a owl:DatatypeProperty , owl:FunctionalProperty ;
+    rdfs:label "valid"@en ; rdfs:comment "True when the claim has no invalidating flag; then it asserts an assertion."@en ; rdfs:domain locx:Claim ; rdfs:range xsd:boolean .
+locx:duplicateCount a owl:DatatypeProperty , owl:FunctionalProperty ;
+    rdfs:label "duplicate count"@en ; rdfs:comment "How often the LLM emitted the same claim for the abstract."@en ; rdfs:domain locx:Claim ; rdfs:range xsd:integer .
+locx:repairRound a owl:DatatypeProperty , owl:FunctionalProperty ;
+    rdfs:label "repair round"@en ; rdfs:comment "Validator repair round (0 = the model's first answer)."@en ; rdfs:domain locx:Claim ; rdfs:range xsd:integer .
+
+# curated annotations (GOA)
+locx:evidence a owl:ObjectProperty , owl:FunctionalProperty ;
+    rdfs:label "evidence"@en ;
+    rdfs:comment "The evidence behind a GOA row: an individual typed with an ECO class (the GO evidence code of the annotation, mapped with ECO's own default GO-code annotation), e.g. 'a direct assay evidence used in manual assertion'. The reasoner infers its ancestor types from ECO (e.g. experimental evidence)."@en ;
+    rdfs:domain locx:CuratedAnnotation ; rdfs:range obo:ECO_0000000 .
+locx:reference a owl:ObjectProperty ;
+    rdfs:label "reference"@en ; rdfs:comment "A non-PubMed reference of a GOA row (GO_REF, Reactome), as an IRI. PubMed references use dcterms:source."@en ;
+    rdfs:domain locx:CuratedAnnotation .
+locx:assignedBy a owl:ObjectProperty , owl:FunctionalProperty ;
+    rdfs:label "assigned by"@en ; rdfs:comment "The group that made the annotation."@en ;
+    rdfs:domain locx:CuratedAnnotation ; rdfs:range foaf:Organization .
+
+# contexts (claims and GOA annotations)
+locx:hasContext a owl:ObjectProperty ;
+    rdfs:label "has context"@en ; rdfs:comment "A context in which the statement holds."@en ;
+    rdfs:domain locx:LocalizationStatement ; rdfs:range locx:Context .
+locx:contextText a owl:DatatypeProperty , owl:FunctionalProperty ;
+    rdfs:label "context text"@en ; rdfs:comment "The words of a free-text context, as the language model extracted them."@en ;
+    rdfs:domain locx:FreeTextContext ; rdfs:range xsd:string .
+locx:contextKind a owl:ObjectProperty , owl:FunctionalProperty ;
+    rdfs:label "context kind"@en ; rdfs:comment "Whether a free-text context is a condition or a cell type."@en ;
+    rdfs:domain locx:FreeTextContext ; rdfs:range locx:ContextKind .
+locx:contextPart a owl:ObjectProperty ;
+    rdfs:label "context part"@en ; rdfs:comment "A relation(term) pair of the context; all parts hold together."@en ;
+    rdfs:domain locx:Context ; rdfs:range locx:ContextPart .
+locx:contextRelation a owl:AnnotationProperty ;
+    rdfs:label "context relation"@en ; rdfs:comment "The relation of a context part, as an RO/BFO relation (annotation property: the value is an RO property)."@en .
+locx:contextTerm a owl:AnnotationProperty ;
+    rdfs:label "context term"@en ; rdfs:comment "The term of a context part: a CL, UBERON, GO, ChEBI ... class, recorded by IRI (annotation property; those ontologies are not loaded)."@en .
+
+# ---------------------------------------------------------------------------------------------------------------------
+# 4. Text and papers
+# ---------------------------------------------------------------------------------------------------------------------
+
+locx:hasAuthorship a owl:ObjectProperty ;
+    rdfs:label "has authorship"@en ; rdfs:comment "An authorship of the paper."@en ; rdfs:domain fabio:JournalArticle ; rdfs:range locx:Authorship .
+
+# ---------------------------------------------------------------------------------------------------------------------
+# 5. People
+# ---------------------------------------------------------------------------------------------------------------------
+
+locx:Authorship a owl:Class ;
+    rdfs:label "authorship"@en ;
+    rdfs:comment "One author of one paper: the person, the position in the author list, the name as printed and the institutions given on that paper (an n-ary relation, so order and affiliation per paper are kept)."@en .
+locx:author a owl:ObjectProperty , owl:FunctionalProperty ;
+    rdfs:label "author"@en ; rdfs:comment "The person of the authorship (OpenAlex author)."@en ; rdfs:domain locx:Authorship ; rdfs:range foaf:Person .
+locx:position a owl:DatatypeProperty , owl:FunctionalProperty ;
+    rdfs:label "position"@en ; rdfs:comment "1-based position in the author list."@en ; rdfs:domain locx:Authorship ; rdfs:range xsd:integer .
+locx:authorName a owl:DatatypeProperty , owl:FunctionalProperty ;
+    rdfs:label "author name"@en ; rdfs:comment "The author's name as printed on the paper."@en ; rdfs:domain locx:Authorship ; rdfs:range xsd:string .
+locx:affiliation a owl:ObjectProperty ;
+    rdfs:label "affiliation"@en ; rdfs:comment "An institution (ROR) the author gave on this paper."@en ; rdfs:domain locx:Authorship ; rdfs:range foaf:Organization .
+locx:orcid a owl:ObjectProperty , owl:InverseFunctionalProperty ;
+    rdfs:label "ORCID"@en ;
+    rdfs:comment "The person's ORCID iD (an https://orcid.org/ IRI). Inverse functional: two persons with the same ORCID are the same person, so the reasoner infers owl:sameAs between OpenAlex authors that share an ORCID."@en ;
+    rdfs:domain foaf:Person .
+
+# ---------------------------------------------------------------------------------------------------------------------
+# 6. Activities: building the corpus, extraction runs (and the support and verdict computations, section 7)
+# ---------------------------------------------------------------------------------------------------------------------
+
+locx:CorpusBuilding a owl:Class ; rdfs:subClassOf prov:Activity ;
+    rdfs:label "corpus building"@en ;
+    rdfs:comment "Selecting papers for one sample of the corpus (e.g. by literature search queries, or by sampling papers that GOA cites). It generates a prov:Collection whose members are the selected papers."@en .
+locx:ExtractionRun a owl:Class ; rdfs:subClassOf prov:Activity ;
+    rdfs:label "extraction run"@en ;
+    rdfs:comment "One run of the language model over the corpus with a fixed prompt, output schema and settings. It generates the claims."@en .
+locx:SupportComputation a owl:Class ; rdfs:subClassOf prov:Activity ;
+    rdfs:label "support computation"@en ;
+    rdfs:comment "Counting, for every assertion, the claims, papers and independent author groups that back it. It generates the Support and AuthorGroup entities."@en .
+locx:VerdictComputation a owl:Class ; rdfs:subClassOf prov:Activity ;
+    rdfs:label "verdict computation"@en ;
+    rdfs:comment "Comparing every assertion with GOA under fixed rules and fixed releases of GO, ECO and GOA. It generates the Verdict entities."@en .
+
+locx:promptVersion a owl:DatatypeProperty , owl:FunctionalProperty ; rdfs:label "prompt version"@en ; rdfs:comment "Prompt version of the run."@en ; rdfs:domain locx:ExtractionRun ; rdfs:range xsd:string .
+locx:promptSha256 a owl:DatatypeProperty , owl:FunctionalProperty ; rdfs:label "prompt SHA-256"@en ; rdfs:comment "SHA-256 of the prompt."@en ; rdfs:domain locx:ExtractionRun ; rdfs:range xsd:string .
+locx:schemaVersion a owl:DatatypeProperty , owl:FunctionalProperty ; rdfs:label "schema version"@en ; rdfs:comment "Output schema version."@en ; rdfs:domain locx:ExtractionRun ; rdfs:range xsd:string .
+locx:temperature a owl:DatatypeProperty , owl:FunctionalProperty ; rdfs:label "temperature"@en ; rdfs:comment "Sampling temperature."@en ; rdfs:domain locx:ExtractionRun ; rdfs:range xsd:decimal .
+locx:maxTokens a owl:DatatypeProperty , owl:FunctionalProperty ; rdfs:label "max tokens"@en ; rdfs:comment "Maximum tokens per answer."@en ; rdfs:domain locx:ExtractionRun ; rdfs:range xsd:integer .
+locx:inputSha256 a owl:DatatypeProperty , owl:FunctionalProperty ; rdfs:label "input SHA-256"@en ; rdfs:comment "SHA-256 of the run's input file."@en ; rdfs:domain locx:ExtractionRun ; rdfs:range xsd:string .
+locx:gpu a owl:DatatypeProperty , owl:FunctionalProperty ; rdfs:label "GPU"@en ; rdfs:comment "GPU index used."@en ; rdfs:domain locx:ExtractionRun ; rdfs:range xsd:integer .
+locx:query a owl:DatatypeProperty ; rdfs:label "query"@en ; rdfs:comment "A literature search query the corpus building ran (Europe PMC)."@en ; rdfs:domain locx:CorpusBuilding ; rdfs:range xsd:string .
+locx:servedName a owl:DatatypeProperty , owl:FunctionalProperty ; rdfs:label "served name"@en ; rdfs:comment "Served model name."@en ; rdfs:domain prov:SoftwareAgent ; rdfs:range xsd:string .
+locx:servedBy a owl:DatatypeProperty , owl:FunctionalProperty ; rdfs:label "served by"@en ; rdfs:comment "Serving software and version."@en ; rdfs:domain prov:SoftwareAgent ; rdfs:range xsd:string .
+
+# ---------------------------------------------------------------------------------------------------------------------
+# 7. Derived results: support (from the extracted claims and papers) and verdicts (comparison with GOA), each made by its own activity
+# ---------------------------------------------------------------------------------------------------------------------
+
+locx:Support a owl:Class ;
+    rdfs:subClassOf prov:Entity ;
+    rdfs:label "support"@en ;
+    rdfs:comment "How much literature backs an assertion: claim, paper and author-group counts, years, journals. Generated by a support activity from the claims and papers alone (not from GOA)."@en .
+locx:AuthorGroup a owl:Class ;
+    rdfs:subClassOf prov:Entity ;
+    rdfs:label "author group"@en ;
+    rdfs:comment "Papers backing one assertion whose authors overlap (shared person, after owl:sameAs): papers from different groups count as independent support."@en .
+locx:Verdict a owl:Class ;
+    rdfs:subClassOf prov:Entity ;
+    rdfs:label "verdict"@en ;
+    rdfs:comment "The outcome of comparing one assertion with GOA, with the GOA rows behind it. Generated by a verdict activity that records the GO, ECO and GOA releases and the rules it used."@en .
+
+locx:about a owl:ObjectProperty , owl:FunctionalProperty ;
+    rdfs:label "about"@en ; rdfs:comment "The assertion a support, author group or verdict is about."@en ;
+    rdfs:domain [ a owl:Class ; owl:unionOf ( locx:Support locx:AuthorGroup locx:Verdict ) ] ; rdfs:range locx:Assertion .
+locx:includesPaper a owl:ObjectProperty ;
+    rdfs:label "includes paper"@en ; rdfs:comment "A paper in the author group."@en ; rdfs:domain locx:AuthorGroup ; rdfs:range fabio:JournalArticle .
+locx:linkedBy a owl:ObjectProperty ;
+    rdfs:label "linked by"@en ; rdfs:comment "A person who appears on more than one of the group's papers."@en ; rdfs:domain locx:AuthorGroup ; rdfs:range foaf:Person .
+
+locx:nClaims a owl:DatatypeProperty , owl:FunctionalProperty ; rdfs:label "number of claims"@en ; rdfs:comment "Valid claims backing the assertion."@en ; rdfs:domain locx:Support ; rdfs:range xsd:integer .
+locx:nPapers a owl:DatatypeProperty , owl:FunctionalProperty ; rdfs:label "number of papers"@en ; rdfs:comment "Papers with a valid claim backing the assertion."@en ; rdfs:domain locx:Support ; rdfs:range xsd:integer .
+locx:nGroups a owl:DatatypeProperty , owl:FunctionalProperty ; rdfs:label "number of author groups"@en ; rdfs:comment "Independent author groups among those papers."@en ; rdfs:domain locx:Support ; rdfs:range xsd:integer .
+locx:nPapersFinding a owl:DatatypeProperty , owl:FunctionalProperty ; rdfs:label "papers stating it as a finding"@en ; rdfs:comment "Papers with at least one claim whose source type is finding."@en ; rdfs:domain locx:Support ; rdfs:range xsd:integer .
+locx:nPapersBackground a owl:DatatypeProperty , owl:FunctionalProperty ; rdfs:label "papers stating it as background"@en ; rdfs:comment "Papers with at least one claim whose source type is background."@en ; rdfs:domain locx:Support ; rdfs:range xsd:integer .
+locx:nPapersHedged a owl:DatatypeProperty , owl:FunctionalProperty ; rdfs:label "papers hedging it"@en ; rdfs:comment "Papers with at least one hedged claim (certainty is independent of finding / background)."@en ; rdfs:domain locx:Support ; rdfs:range xsd:integer .
+locx:nOpposingPapers a owl:DatatypeProperty , owl:FunctionalProperty ; rdfs:label "opposing papers"@en ; rdfs:comment "Papers with a valid claim of the opposite polarity for the same protein and location."@en ; rdfs:domain locx:Support ; rdfs:range xsd:integer .
+locx:nJournals a owl:DatatypeProperty , owl:FunctionalProperty ; rdfs:label "number of journals"@en ; rdfs:comment "Journals of those papers."@en ; rdfs:domain locx:Support ; rdfs:range xsd:integer .
+locx:sumCitations a owl:DatatypeProperty , owl:FunctionalProperty ; rdfs:label "summed citations"@en ; rdfs:comment "Summed citation counts of those papers."@en ; rdfs:domain locx:Support ; rdfs:range xsd:integer .
+locx:yearFirst a owl:DatatypeProperty , owl:FunctionalProperty ; rdfs:label "first year"@en ; rdfs:comment "Year of the first paper."@en ; rdfs:domain locx:Support ; rdfs:range xsd:integer .
+locx:yearLast a owl:DatatypeProperty , owl:FunctionalProperty ; rdfs:label "last year"@en ; rdfs:comment "Year of the latest paper."@en ; rdfs:domain locx:Support ; rdfs:range xsd:integer .
+locx:contextDependent a owl:DatatypeProperty , owl:FunctionalProperty ;
+    rdfs:label "context-dependent"@en ;
+    rdfs:comment "True when at least one valid claim backing the assertion states a condition (a free-text context of kind condition, e.g. 'under starvation'). A warning that the location may hold only under some conditions; it does not mean the papers agree on one condition, and it is not resolved automatically."@en ;
+    rdfs:domain locx:Support ; rdfs:range xsd:boolean .
+
+locx:outcome a owl:ObjectProperty , owl:FunctionalProperty ;
+    rdfs:label "outcome"@en ; rdfs:comment "The verdict's outcome (see the definitions of the outcome values)."@en ; rdfs:domain locx:Verdict ; rdfs:range locx:VerdictOutcome .
+locx:goaSame a owl:ObjectProperty ; rdfs:label "GOA row at the same term"@en ; rdfs:comment "A GOA row of the protein at the same GO term."@en ; rdfs:domain locx:Verdict ; rdfs:range locx:CuratedAnnotation .
+locx:goaNarrower a owl:ObjectProperty ; rdfs:label "GOA row at a narrower term"@en ; rdfs:comment "A GOA row of the protein at a more specific GO term (below the assertion's term)."@en ; rdfs:domain locx:Verdict ; rdfs:range locx:CuratedAnnotation .
+locx:goaBroader a owl:ObjectProperty ; rdfs:label "GOA row at a broader term"@en ; rdfs:comment "A GOA row of the protein at a broader GO term (above the assertion's term)."@en ; rdfs:domain locx:Verdict ; rdfs:range locx:CuratedAnnotation .
+locx:goaMatch a owl:ObjectProperty ; rdfs:label "GOA row behind the outcome"@en ; rdfs:comment "A GOA row the outcome rests on."@en ; rdfs:domain locx:Verdict ; rdfs:range locx:CuratedAnnotation .
+locx:strongestEvidence a owl:ObjectProperty , owl:FunctionalProperty ;
+    rdfs:label "strongest evidence"@en ; rdfs:comment "The strongest GO evidence category (locx:EvidenceCategory) among the GOA rows behind the outcome."@en ;
+    rdfs:domain locx:Verdict ; rdfs:range locx:EvidenceCategory .
+locx:curatedFromSamePaper a owl:DatatypeProperty , owl:FunctionalProperty ;
+    rdfs:label "curated from the same paper"@en ; rdfs:comment "True when a GOA row behind the outcome cites one of the papers backing the assertion."@en ; rdfs:domain locx:Verdict ; rdfs:range xsd:boolean .
+
+# ---------------------------------------------------------------------------------------------------------------------
+# 8. Value sets: each an OWL class with exactly these individuals (owl:oneOf); values carry label, comment, token
+# ---------------------------------------------------------------------------------------------------------------------
+
+locx:Polarity a owl:Class ; rdfs:label "polarity"@en ;
+    rdfs:comment "Whether a statement says the protein is or is not at the location."@en ;
+    owl:oneOf ( locx:Present locx:Absent ) .
+locx:Present a owl:NamedIndividual , locx:Polarity ; locx:token "present" ;
+    rdfs:label "present"@en ; rdfs:comment "The protein is at the location."@en .
+locx:Absent a owl:NamedIndividual , locx:Polarity ; locx:token "absent" ;
+    rdfs:label "absent"@en ; rdfs:comment "The protein is not at the location ('excluded from', GOA NOT)."@en .
+
+locx:Certainty a owl:Class ; rdfs:label "certainty"@en ;
+    rdfs:comment "How firmly the sentence states the claim. Independent of the source type."@en ;
+    owl:oneOf ( locx:Stated locx:Hedged ) .
+locx:Stated a owl:NamedIndividual , locx:Certainty ; locx:token "stated" ;
+    rdfs:label "stated"@en ; rdfs:comment "Stated as a fact."@en .
+locx:Hedged a owl:NamedIndividual , locx:Certainty ; locx:token "hedged" ;
+    rdfs:label "hedged"@en ; rdfs:comment "Hedged: may, might, could, suggest, putative, possibly."@en .
+
+locx:SourceType a owl:Class ; rdfs:label "source type"@en ;
+    rdfs:comment "Whether the sentence reports the paper's own result or prior knowledge. Independent of the certainty."@en ;
+    owl:oneOf ( locx:Finding locx:Background ) .
+locx:Finding a owl:NamedIndividual , locx:SourceType ; locx:token "finding" ;
+    rdfs:label "finding"@en ; rdfs:comment "This study's own result."@en .
+locx:Background a owl:NamedIndividual , locx:SourceType ; locx:token "background" ;
+    rdfs:label "background"@en ; rdfs:comment "Prior knowledge the paper repeats ('is known to', 'has been reported')."@en .
+
+locx:Method a owl:Class ; rdfs:label "method"@en ;
+    rdfs:comment "The experimental method named for a claim (a fixed list offered to the extraction model)."@en ;
+    owl:oneOf ( locx:Immunofluorescence locx:FluorescentProteinImaging locx:FractionationWesternBlot locx:Immunohistochemistry
+                locx:ElectronMicroscopy locx:ProximityLabelingOrProteomics locx:OtherMethod locx:MethodNotStated ) .
+locx:Immunofluorescence a owl:NamedIndividual , locx:Method ; locx:token "immunofluorescence" ;
+    rdfs:label "immunofluorescence"@en ; rdfs:comment "Antibody staining imaged by fluorescence microscopy."@en .
+locx:FluorescentProteinImaging a owl:NamedIndividual , locx:Method ; locx:token "fluorescent_protein_imaging" ;
+    rdfs:label "fluorescent protein imaging"@en ; rdfs:comment "Imaging of a protein tagged with a fluorescent protein (e.g. GFP)."@en .
+locx:FractionationWesternBlot a owl:NamedIndividual , locx:Method ; locx:token "fractionation_western_blot" ;
+    rdfs:label "fractionation + western blot"@en ; rdfs:comment "Subcellular fractionation followed by western blot."@en .
+locx:Immunohistochemistry a owl:NamedIndividual , locx:Method ; locx:token "immunohistochemistry" ;
+    rdfs:label "immunohistochemistry"@en ; rdfs:comment "Antibody staining of tissue sections."@en .
+locx:ElectronMicroscopy a owl:NamedIndividual , locx:Method ; locx:token "electron_microscopy" ;
+    rdfs:label "electron microscopy"@en ; rdfs:comment "Electron microscopy, including immuno-EM."@en .
+locx:ProximityLabelingOrProteomics a owl:NamedIndividual , locx:Method ; locx:token "proximity_labeling_or_proteomics" ;
+    rdfs:label "proximity labeling or proteomics"@en ; rdfs:comment "Proximity labeling (BioID, APEX) or organelle proteomics."@en .
+locx:OtherMethod a owl:NamedIndividual , locx:Method ; locx:token "other" ;
+    rdfs:label "other method"@en ; rdfs:comment "A method not in this list."@en .
+locx:MethodNotStated a owl:NamedIndividual , locx:Method ; locx:token "not_stated" ;
+    rdfs:label "method not stated"@en ; rdfs:comment "No method named."@en .
+
+locx:Organism a owl:Class ; rdfs:label "organism"@en ;
+    rdfs:comment "The organism a claim was observed in. Human, mouse and rat match NCBI Taxonomy terms (locx:taxon)."@en ;
+    owl:oneOf ( locx:Human locx:Mouse locx:Rat locx:OtherOrganism locx:OrganismNotStated ) .
+locx:Human a owl:NamedIndividual , locx:Organism ; locx:token "human" ;
+    rdfs:label "human"@en ; rdfs:comment "Homo sapiens."@en ; locx:taxon obo:NCBITaxon_9606 .
+locx:Mouse a owl:NamedIndividual , locx:Organism ; locx:token "mouse" ;
+    rdfs:label "mouse"@en ; rdfs:comment "Mus musculus."@en ; locx:taxon obo:NCBITaxon_10090 .
+locx:Rat a owl:NamedIndividual , locx:Organism ; locx:token "rat" ;
+    rdfs:label "rat"@en ; rdfs:comment "Rattus norvegicus."@en ; locx:taxon obo:NCBITaxon_10116 .
+locx:OtherOrganism a owl:NamedIndividual , locx:Organism ; locx:token "other" ;
+    rdfs:label "other organism"@en ; rdfs:comment "An organism not in this list."@en .
+locx:OrganismNotStated a owl:NamedIndividual , locx:Organism ; locx:token "not_stated" ;
+    rdfs:label "organism not stated"@en ; rdfs:comment "No organism named."@en .
+
+locx:QualityFlag a owl:Class ; rdfs:label "quality flag"@en ;
+    rdfs:comment "A check result on a claim: whether the protein and location are named in the cited sentence, whether a free-text location matched GO, whether the GO term is possible in human cells and specific enough. locx:invalidates says whether it makes the claim invalid."@en ;
+    owl:oneOf ( locx:BadJson locx:ProteinNotInSentence locx:ProteinCoref locx:LocationNotInSentence locx:LocationCoref
+                locx:OtherGroundedExact locx:OtherGroundedFuzzy locx:OtherAmbiguous locx:OtherUngrounded
+                locx:ImpossibleLocation locx:TooGenericLocation ) .
+locx:invalidates a owl:AnnotationProperty ; rdfs:label "invalidates"@en ;
+    rdfs:comment "True on a quality flag that makes a claim invalid."@en .
+locx:BadJson a owl:NamedIndividual , locx:QualityFlag ; locx:token "bad_json" ; locx:invalidates true ;
+    rdfs:label "bad JSON"@en ; rdfs:comment "The model output could not be parsed."@en .
+locx:ProteinNotInSentence a owl:NamedIndividual , locx:QualityFlag ; locx:token "protein_not_in_sentence" ; locx:invalidates true ;
+    rdfs:label "protein not in sentence"@en ; rdfs:comment "The protein is not mentioned in the cited sentence or before it."@en .
+locx:ProteinCoref a owl:NamedIndividual , locx:QualityFlag ; locx:token "protein_coref" ; locx:invalidates false ;
+    rdfs:label "protein coreference"@en ; rdfs:comment "Warning: the protein is not named in the cited sentence but in an earlier one."@en .
+locx:LocationNotInSentence a owl:NamedIndividual , locx:QualityFlag ; locx:token "location_not_in_sentence" ; locx:invalidates true ;
+    rdfs:label "location not in sentence"@en ; rdfs:comment "The location is not mentioned in the cited sentence or before it."@en .
+locx:LocationCoref a owl:NamedIndividual , locx:QualityFlag ; locx:token "location_coref" ; locx:invalidates false ;
+    rdfs:label "location coreference"@en ; rdfs:comment "Warning: the location is not named in the cited sentence but in an earlier one."@en .
+locx:OtherGroundedExact a owl:NamedIndividual , locx:QualityFlag ; locx:token "other_grounded_exact" ; locx:invalidates false ;
+    rdfs:label "free-text location, exact GO match"@en ; rdfs:comment "The model's free-text location matched a GO CC label or synonym exactly."@en .
+locx:OtherGroundedFuzzy a owl:NamedIndividual , locx:QualityFlag ; locx:token "other_grounded_fuzzy" ; locx:invalidates false ;
+    rdfs:label "free-text location, fuzzy GO match"@en ; rdfs:comment "The model's free-text location matched a GO CC label or synonym approximately."@en .
+locx:OtherAmbiguous a owl:NamedIndividual , locx:QualityFlag ; locx:token "other_ambiguous" ; locx:invalidates false ;
+    rdfs:label "free-text location, ambiguous"@en ; rdfs:comment "The free-text location matched several GO terms."@en .
+locx:OtherUngrounded a owl:NamedIndividual , locx:QualityFlag ; locx:token "other_ungrounded" ; locx:invalidates true ;
+    rdfs:label "free-text location, not grounded"@en ; rdfs:comment "The model's free-text location matched no GO CC term."@en .
+locx:ImpossibleLocation a owl:NamedIndividual , locx:QualityFlag ; locx:token "impossible_location" ; locx:invalidates true ;
+    rdfs:label "impossible location"@en ; rdfs:comment "The GO term lies under a compartment human cells do not have (locx:nonHumanCompartmentRoot)."@en .
+locx:TooGenericLocation a owl:NamedIndividual , locx:QualityFlag ; locx:token "too_generic" ; locx:invalidates false ;
+    rdfs:label "too generic location"@en ; rdfs:comment "Warning: the GO term is too generic to compare (locx:tooGeneric)."@en .
+
+locx:ContextKind a owl:Class ; rdfs:label "context kind"@en ;
+    rdfs:comment "What a free-text context describes."@en ;
+    owl:oneOf ( locx:ConditionText locx:CellTypeText ) .
+locx:ConditionText a owl:NamedIndividual , locx:ContextKind ; locx:token "condition" ;
+    rdfs:label "condition"@en ; rdfs:comment "A condition in words: a treatment, stress, cell-cycle phase, disease state ..."@en .
+locx:CellTypeText a owl:NamedIndividual , locx:ContextKind ; locx:token "cell_type" ;
+    rdfs:label "cell type"@en ; rdfs:comment "A cell type or cell line in words (e.g. 'HeLa', 'primary neurons')."@en .
+
+locx:GroundingMethod a owl:Class ; rdfs:label "grounding method"@en ;
+    rdfs:comment "How a free-text (OTHER) location was matched to GO."@en ;
+    owl:oneOf ( locx:ExactGrounding locx:FuzzyGrounding ) .
+locx:ExactGrounding a owl:NamedIndividual , locx:GroundingMethod ; locx:token "exact" ;
+    rdfs:label "exact"@en ; rdfs:comment "Exact match to a GO CC label or synonym."@en .
+locx:FuzzyGrounding a owl:NamedIndividual , locx:GroundingMethod ; locx:token "fuzzy" ;
+    rdfs:label "fuzzy"@en ; rdfs:comment "Approximate string match to a GO CC label or synonym."@en .
+
+locx:VerdictOutcome a owl:Class ; rdfs:label "verdict outcome"@en ;
+    rdfs:comment "How an assertion compares with the GOA rows of the same protein along the GO hierarchy of its location."@en ;
+    owl:oneOf ( locx:Consistent locx:Refinement locx:Novel locx:Conflicting locx:Uninformative locx:Error ) .
+locx:Consistent a owl:NamedIndividual , locx:VerdictOutcome ; locx:token "consistent" ;
+    rdfs:label "consistent"@en ; rdfs:comment "GOA has the same term or a more specific one, with the same polarity."@en .
+locx:Refinement a owl:NamedIndividual , locx:VerdictOutcome ; locx:token "refinement" ;
+    rdfs:label "refinement"@en ; rdfs:comment "GOA has only a broader, non-generic term: the papers are more specific."@en .
+locx:Novel a owl:NamedIndividual , locx:VerdictOutcome ; locx:token "novel" ;
+    rdfs:label "novel"@en ; rdfs:comment "GOA has nothing on this term or its lineage: a candidate curation gap."@en .
+locx:Conflicting a owl:NamedIndividual , locx:VerdictOutcome ; locx:token "conflicting" ;
+    rdfs:label "conflicting"@en ; rdfs:comment "GOA says the opposite (NOT vs present, or positive vs absent)."@en .
+locx:Uninformative a owl:NamedIndividual , locx:VerdictOutcome ; locx:token "uninformative" ;
+    rdfs:label "uninformative"@en ; rdfs:comment "The GO term is too generic to compare."@en .
+locx:Error a owl:NamedIndividual , locx:VerdictOutcome ; locx:token "error" ;
+    rdfs:label "error"@en ; rdfs:comment "Sanity check: no valid claim backs the assertion."@en .
+
+# ---------------------------------------------------------------------------------------------------------------------
+# 9. GO evidence categories (source: the GO Consortium's guide to GO evidence codes), defined over ECO classes.
+#    A GOA row's ECO term belongs to a category when it is a subclass of one of the category's ECO roots and of none of
+#    its excluded roots (rdfs:subClassOf* in graph eco). The guide keeps high-throughput apart from experimental,
+#    although ECO puts high-throughput direct assay etc. under experimental evidence. locx:evidenceRank is our verdict
+#    policy (1 = strongest); ECO itself does not rank evidence.
+# ---------------------------------------------------------------------------------------------------------------------
+
+locx:ecoRoot a owl:AnnotationProperty ; rdfs:label "ECO root"@en ;
+    rdfs:comment "An ECO class whose subclasses belong to the evidence category."@en .
+locx:ecoExcludedRoot a owl:AnnotationProperty ; rdfs:label "excluded ECO root"@en ;
+    rdfs:comment "An ECO class whose subclasses do not belong to the evidence category, even when under an ECO root."@en .
+locx:evidenceRank a owl:AnnotationProperty ; rdfs:label "evidence rank"@en ;
+    rdfs:comment "Strength order used by the verdicts (1 = strongest); our policy, not part of ECO."@en .
+
+locx:EvidenceCategory a owl:Class ; rdfs:label "GO evidence category"@en ;
+    rdfs:comment "A category of the GO guide to evidence codes."@en ;
+    rdfs:seeAlso <https://geneontology.org/docs/guide-go-evidence-codes/> ;
+    owl:oneOf ( locx:ExperimentalEvidence locx:HighThroughputEvidence locx:AuthorStatementEvidence locx:CuratorStatementEvidence
+                locx:PhylogeneticEvidence locx:ComputationalEvidence locx:ElectronicEvidence ) .
+locx:ExperimentalEvidence a owl:NamedIndividual , locx:EvidenceCategory ;
+    rdfs:label "experimental"@en ; locx:token "experimental" ; locx:evidenceRank 1 ;
+    rdfs:comment "Shown in a lab experiment on this protein (GO codes EXP, IDA, IPI, IMP, IGI, IEP)."@en ;
+    locx:ecoRoot obo:ECO_0000006 ; locx:ecoExcludedRoot obo:ECO_0006056 .
+locx:HighThroughputEvidence a owl:NamedIndividual , locx:EvidenceCategory ;
+    rdfs:label "high-throughput"@en ; locx:token "high_throughput" ; locx:evidenceRank 2 ;
+    rdfs:comment "From a large-scale screen, e.g. Human Protein Atlas imaging (HTP, HDA, HMP, HGI, HEP)."@en ;
+    locx:ecoRoot obo:ECO_0006056 .
+locx:AuthorStatementEvidence a owl:NamedIndividual , locx:EvidenceCategory ;
+    rdfs:label "author statement"@en ; locx:token "author_statement" ; locx:evidenceRank 3 ;
+    rdfs:comment "A paper or review states it; the curator did not see the data (TAS, NAS)."@en ;
+    locx:ecoRoot obo:ECO_0000204 .
+locx:CuratorStatementEvidence a owl:NamedIndividual , locx:EvidenceCategory ;
+    rdfs:label "curator statement"@en ; locx:token "curator" ; locx:evidenceRank 4 ;
+    rdfs:comment "A curator inferred it from other annotations (IC; ND = no data, skipped by the verdicts)."@en ;
+    locx:ecoRoot obo:ECO_0000305 .
+locx:PhylogeneticEvidence a owl:NamedIndividual , locx:EvidenceCategory ;
+    rdfs:label "phylogenetic"@en ; locx:token "phylogenetic" ; locx:evidenceRank 5 ;
+    rdfs:comment "Inferred from the protein's evolutionary relatives (IBA, IBD, IKR, IRD)."@en ;
+    locx:ecoRoot obo:ECO_0000080 .
+locx:ComputationalEvidence a owl:NamedIndividual , locx:EvidenceCategory ;
+    rdfs:label "computational"@en ; locx:token "computational" ; locx:evidenceRank 6 ;
+    rdfs:comment "Reviewed computational analysis: sequence or structural similarity, orthology, genomic context (ISS, ISO, ISA, ISM, IGC, RCA)."@en ;
+    locx:ecoRoot obo:ECO_0007672 , obo:ECO_0000177 , obo:ECO_0000212 .
+locx:ElectronicEvidence a owl:NamedIndividual , locx:EvidenceCategory ;
+    rdfs:label "electronic"@en ; locx:token "electronic" ; locx:evidenceRank 7 ;
+    rdfs:comment "Assigned automatically; no curator reviewed it (IEA)."@en ;
+    locx:ecoRoot obo:ECO_0000501 .
+
+# ---------------------------------------------------------------------------------------------------------------------
+# 10. Statements about GO terms made by this ontology (not by GO). The GO labels are given as comments.
+# ---------------------------------------------------------------------------------------------------------------------
+
+locx:tooGeneric a owl:AnnotationProperty ; rdfs:label "too generic"@en ;
+    rdfs:comment "The GO term is too generic to support a verdict; claims on it get the too-generic flag and the Uninformative outcome."@en .
+locx:nonHumanCompartmentRoot a owl:AnnotationProperty ; rdfs:label "non-human compartment root"@en ;
+    rdfs:comment "Human cells do not have this compartment; a claim on it or any GO term below it (is_a / part_of) gets the impossible-location flag."@en .
+
+obo:GO_0005575 locx:tooGeneric true .            # cellular_component
+obo:GO_0110165 locx:tooGeneric true .            # cellular anatomical structure
+obo:GO_0005622 locx:tooGeneric true .            # intracellular anatomical structure
+obo:GO_0009536 locx:nonHumanCompartmentRoot true .   # plastid
+obo:GO_0005618 locx:nonHumanCompartmentRoot true .   # cell wall
+obo:GO_0009579 locx:nonHumanCompartmentRoot true .   # thylakoid
+obo:GO_0042597 locx:nonHumanCompartmentRoot true .   # periplasmic space
+
+# ---------------------------------------------------------------------------------------------------------------------
+# 11. Disjointness
+# ---------------------------------------------------------------------------------------------------------------------
+
+[] a owl:AllDisjointClasses ;
+    owl:members ( locx:LocalizationStatement locx:Assertion locx:Context locx:ContextPart locx:Authorship
+                  locx:Support locx:AuthorGroup locx:Verdict up:Protein up:Gene up:Subcellular_Location_Annotation
+                  fabio:JournalArticle fabio:Journal fabio:Abstract foaf:Person foaf:Organization prov:Activity
+                  prov:SoftwareAgent prov:Collection oa:SpecificResource c4o:GlobalCitationCount ) .
+[] a owl:AllDisjointClasses ; owl:members ( locx:Claim locx:CuratedAnnotation ) .
+[] a owl:AllDisjointClasses ; owl:members ( locx:GOAContext locx:FreeTextContext ) .
+[] a owl:AllDisjointClasses ; owl:members ( locx:CorpusBuilding locx:ExtractionRun locx:SupportComputation locx:VerdictComputation ) .
+
+# OWL does not assume that different names mean different things: all values are pairwise different
+[] a owl:AllDifferent ;
+    owl:distinctMembers ( locx:ConditionText locx:CellTypeText locx:Absent locx:AuthorStatementEvidence locx:Background locx:BadJson locx:ComputationalEvidence locx:Conflicting
+                          locx:Consistent locx:CuratorStatementEvidence locx:ElectronMicroscopy locx:ElectronicEvidence locx:Error locx:ExactGrounding
+                          locx:ExperimentalEvidence locx:Finding locx:FluorescentProteinImaging locx:FractionationWesternBlot locx:FuzzyGrounding locx:Hedged
+                          locx:HighThroughputEvidence locx:Human locx:Immunofluorescence locx:Immunohistochemistry locx:ImpossibleLocation locx:LocationCoref
+                          locx:LocationNotInSentence locx:MethodNotStated locx:Mouse locx:Novel locx:OrganismNotStated locx:OtherAmbiguous
+                          locx:OtherGroundedExact locx:OtherGroundedFuzzy locx:OtherMethod locx:OtherOrganism locx:OtherUngrounded locx:PhylogeneticEvidence
+                          locx:Present locx:ProteinCoref locx:ProteinNotInSentence locx:ProximityLabelingOrProteomics locx:Rat locx:Refinement
+                          locx:Stated locx:TooGenericLocation locx:Uninformative ) .

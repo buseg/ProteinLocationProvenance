@@ -1,4 +1,7 @@
 """M2: download GO / GOA / UniProt, build Turtle, load the reference graphs, sanity-check, write stats.
+Reference graphs: the official releases go, eco, ro and uniprot-locations loaded unmodified (locx/kg/releases.py),
+goa-human (GOA rows as CuratedAnnotations), uniprot-human (UniProt RDF, up: vocabulary). go_cc.py still builds the
+grounding dictionary from go-basic.obo (the same GO release).
 
 Usage: python -m locx.kg.build [--force] [--replace]
   --force    rebuild Turtle files even if they exist
@@ -9,7 +12,7 @@ import json
 
 from locx.config import CFG, QUERIES, RDF, REPORTS
 from locx.fetch import go, goa, uniprot
-from locx.kg import fuseki, go_cc, goa_rdf, uniprot_rdf
+from locx.kg import fuseki, go_cc, goa_rdf, releases, uniprot_rdf
 
 STATS = RDF / "build_stats.json"
 
@@ -36,16 +39,18 @@ def main():
     ap.add_argument("--replace", action="store_true")
     args = ap.parse_args()
 
-    obo, gaf, tsv = go.fetch(), goa.fetch(), uniprot.fetch()
-    files = {"go_cc": RDF / "go_cc.ttl", "goa": RDF / "goa_human_cc.ttl", "uniprot": RDF / "uniprot_human.ttl"}
+    obo, gaf, _ = go.fetch(), goa.fetch(), uniprot.fetch()
+    files = {k: releases.path(k) for k in ("go", "eco", "ro", "uniprot_core", "uniprot_locations")}
+    files.update(goa=RDF / "goa_human_cc.ttl", uniprot=RDF / "uniprot_human.nt")
     stats = json.loads(STATS.read_text()) if STATS.exists() else {}
-    if args.force or not files["go_cc"].exists() or "go_cc" not in stats:
-        stats["go_cc"] = go_cc.build(obo)
+    if args.force or "go_cc" not in stats:
+        stats["go_cc"] = go_cc.build(obo)   # grounding dictionary + GO CC counts (data/interim/go_cc_dictionary.tsv)
     if args.force or not files["goa"].exists() or "goa" not in stats:
         _, cc, _ = go_cc.parse(obo)
         stats["goa"] = goa_rdf.build(gaf, set(cc))
     if args.force or not files["uniprot"].exists() or "uniprot" not in stats:
-        stats["uniprot"] = uniprot_rdf.build(tsv)
+        stats["uniprot"] = uniprot_rdf.build()
+    stats["releases"] = {k: releases.version_iri(k) for k in ("go", "eco", "ro")}
     STATS.write_text(json.dumps(stats, indent=1))
 
     graphs = CFG["graphs"]
@@ -54,7 +59,7 @@ def main():
     print("[sanity]")
     checks = sanity()
     report = {"triples_per_graph": triples, "go_cc": stats["go_cc"], "goa_human_cc": stats["goa"],
-              "uniprot_human": stats["uniprot"], "sanity_checks": checks}
+              "uniprot_human": stats["uniprot"], "releases": stats["releases"], "sanity_checks": checks}
     REPORTS.mkdir(exist_ok=True)
     (REPORTS / "kg_stats.json").write_text(json.dumps(report, indent=1))
     print(f"[kg] triples: {triples}; wrote reports/kg_stats.json")
