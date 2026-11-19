@@ -1,0 +1,6 @@
+# UniProt SPARQL endpoint (sparql.uniprot.org), run by locx/fetch/uniprot_rdf.py: the rdf:type UniProt gives the nodes
+# our UniProt graph points to (names, GeneID links, citations, evidence attributions, located-in nodes), in batches
+# (%NODES% = node IRIs). Nodes UniProt leaves untyped return nothing.
+PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+CONSTRUCT { ?x a ?type . }
+WHERE { VALUES ?x { %NODES% } ?x a ?type . }

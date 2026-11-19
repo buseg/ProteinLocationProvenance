@@ -1,0 +1,20 @@
+# UniProt SPARQL endpoint: the UniProt subcellular location terms our proteins use, with their label,
+# definition, hierarchy and the matching GO term (skos:exactMatch). %TERMS% = location IRIs.
+PREFIX up:   <http://purl.uniprot.org/core/>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+
+CONSTRUCT {
+  ?t a ?type ; skos:prefLabel ?label ; up:alias ?alias ; rdfs:comment ?comment ;
+     rdfs:subClassOf ?super ; up:partOf ?part ; skos:exactMatch ?match .
+}
+WHERE {
+  VALUES ?t { %TERMS% }
+  ?t a ?type .
+  OPTIONAL { ?t skos:prefLabel ?label }
+  OPTIONAL { ?t up:alias ?alias }
+  OPTIONAL { ?t rdfs:comment ?comment }
+  OPTIONAL { ?t rdfs:subClassOf ?super }
+  OPTIONAL { ?t up:partOf ?part }
+  OPTIONAL { ?t skos:exactMatch ?match }
+}

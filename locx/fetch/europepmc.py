@@ -67,6 +67,33 @@ def clean(text: str | None) -> str | None:
     return html.unescape(TAG.sub("", text)).strip() if text else text
 
 
+def journal(rec: dict) -> dict | None:
+    """Journal identity from a core record: NLM Catalog ID, ISSN, eISSN, title, NLM abbreviation."""
+    j = rec.get("journalInfo", {}).get("journal", {})
+    if not j:
+        return None
+    return {"nlmid": j.get("nlmid"), "issn": j.get("issn"), "essn": j.get("essn"), "title": j.get("title"),
+            "abbrev": j.get("medlineAbbreviation") or j.get("isoabbreviation")}
+
+
+def record_index(pmids: set[str]) -> dict[str, dict]:
+    """PMID -> {"journal": journal identity, "counts": [[fetch date, citedByCount], ...]}, read from the cached core
+    records (no new requests). The fetch date of a record is the date its cached page was written."""
+    import datetime
+    out = {}
+    for page in sorted(CACHE.glob("*/page_*.json")):
+        day = datetime.date.fromtimestamp(page.stat().st_mtime).isoformat()
+        for rec in json.loads(page.read_text())["resultList"]["result"]:
+            p = rec.get("pmid")
+            if p not in pmids:
+                continue
+            e = out.setdefault(p, {"journal": None, "counts": []})
+            e["journal"] = e["journal"] or journal(rec)
+            if [day, rec.get("citedByCount", 0)] not in e["counts"]:
+                e["counts"].append([day, rec.get("citedByCount", 0)])
+    return out
+
+
 def metadata(rec: dict) -> dict:
     authors = []
     for a in rec.get("authorList", {}).get("author", []):
@@ -79,6 +106,7 @@ def metadata(rec: dict) -> dict:
             "year": int(rec["pubYear"]) if rec.get("pubYear", "").isdigit() else None,
             "date": rec.get("firstPublicationDate"),
             "journal": rec.get("journalInfo", {}).get("journal", {}).get("title"),
+            "journal_ids": journal(rec),
             "cited_by": rec.get("citedByCount", 0),
             "pub_types": rec.get("pubTypeList", {}).get("pubType", []),
             "authors": authors}

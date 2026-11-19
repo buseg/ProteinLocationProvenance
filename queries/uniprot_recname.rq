@@ -1,0 +1,11 @@
+# UniProt SPARQL endpoint (sparql.uniprot.org), run by locx/fetch/uniprot_rdf.py per batch of proteins
+# (%PROTEINS% = protein IRIs). Recommended name (full, short).
+# One simple pattern per query: the endpoint answers these in < 1 s, a UNION of them times out.
+PREFIX up:   <http://purl.uniprot.org/core/>
+PREFIX rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+PREFIX foaf: <http://xmlns.com/foaf/0.1/>
+
+CONSTRUCT { ?p up:recommendedName ?n . ?n up:fullName ?full ; up:shortName ?short . }
+WHERE { VALUES ?p { %PROTEINS% } ?p up:recommendedName ?n . ?n up:fullName ?full . OPTIONAL { ?n up:shortName ?short } }
