@@ -1,0 +1,4 @@
+# Demo / Schema: what points to one IRI (%IRI%), in every named graph (first 50; a GO term like "nucleus" has many).
+SELECT ?g ?s ?p
+WHERE { GRAPH ?g { ?s ?p <%IRI%> } }
+LIMIT 50

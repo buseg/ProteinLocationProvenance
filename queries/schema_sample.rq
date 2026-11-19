@@ -1,0 +1,16 @@
+# Schema / sample: a few triples of one predicate (%PRED%) in one graph (%GRAPH%), with the class of the subject
+#   and of the object (looked up in any graph, since e.g. verdicts sit on assertions typed in the assertions graph).
+PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+PREFIX owl: <http://www.w3.org/2002/07/owl#>
+SELECT ?s ?o (SAMPLE(?sc) AS ?sClass) (SAMPLE(?oc) AS ?oClass)
+WHERE {
+  { SELECT ?s ?o WHERE { GRAPH <%GRAPH%> { ?s <%PRED%> ?o } } OFFSET %OFFSET% LIMIT %LIMIT% }
+  # asserted types first; a node with no asserted type gets the reasoner's (e.g. UniProt's attribution nodes)
+  OPTIONAL { GRAPH ?g1 { ?s rdf:type ?sa } FILTER (?g1 != <urn:locx:graph:inferred> && ?sa != owl:NamedIndividual) }
+  OPTIONAL { GRAPH ?g2 { ?o rdf:type ?oa } FILTER (?g2 != <urn:locx:graph:inferred> && ?oa != owl:NamedIndividual) }
+  OPTIONAL { FILTER (!BOUND(?sa)) GRAPH <urn:locx:graph:inferred> { ?s rdf:type ?si } }
+  OPTIONAL { FILTER (!BOUND(?oa)) GRAPH <urn:locx:graph:inferred> { ?o rdf:type ?oi } }
+  BIND (COALESCE(?sa, ?si) AS ?sc)
+  BIND (COALESCE(?oa, ?oi) AS ?oc)
+}
+GROUP BY ?s ?o

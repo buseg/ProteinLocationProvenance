@@ -2,9 +2,9 @@
 
 Pages around one question: Home (pipeline funnel + highlights); per protein: Profile (literature and the curated
 side in one table, evidence inline), Conditions, Network, Timeline (app/graphs.py) and Provenance
-(author groups → papers → claims → assertion → GOA, with the extraction run); Explore (filter every assertion);
-Quality. GOA evidence codes are grouped by strength everywhere (locx/evidence.py, app/evidence_ui.py).
-Live SPARQL against Fuseki; every query is in queries/ and shown with the sidebar toggle.
+(author groups → papers → claims → assertion → GOA, with the extraction run); Quality; Schema (classes, fields,
+IRI lookup; app/schema_view.py). GOA evidence is shown with ECO's labels and the GO guide's categories (locx/evidence.py,
+app/evidence_ui.py). Live SPARQL against Fuseki; every query is in queries/ and listed at the bottom of each page.
 
   make demo   # streamlit run app/v2.py on 127.0.0.1:8501
 """
@@ -22,6 +22,7 @@ import data as D
 import evidence_ui as EV
 import graphs as G
 import provenance_view as P
+import schema_view as SV
 
 st.set_page_config(page_title="locx — protein localization claims", layout="wide", initial_sidebar_state="collapsed")
 
@@ -757,6 +758,10 @@ def timeline():
     G.timeline_page(CTX)
 
 
+def schema():
+    SV.schema_page(CTX)
+
+
 PAGES = {
     "home": st.Page(home, title="Home", default=True),
     "protein": st.Page(protein_page, title="Profile", url_path="protein"),
@@ -764,11 +769,12 @@ PAGES = {
     "network": st.Page(network, title="Network", url_path="network"),
     "timeline": st.Page(timeline, title="Timeline", url_path="timeline"),
     "provenance": st.Page(provenance_page, title="Provenance", url_path="provenance"),
-    "explore": st.Page(explore, title="Explore", url_path="explore"),
     "quality": st.Page(quality, title="Quality", url_path="quality"),
+    "schema": st.Page(schema, title="Schema", url_path="schema"),
 }
 SECTIONS = {"": ["home"], "Protein": ["protein", "conditions", "network", "timeline", "provenance"],
-            "All assertions": ["explore", "quality"]}
+            "Quality": ["quality"], "Knowledge graph": ["schema"]}
+st.session_state["_page_queries"] = []   # filled by cached() while the page runs
 if "_test_page" in st.session_state:   # used by app/check_demo.py (AppTest cannot switch to function pages)
     sidebar()
     globals()[st.session_state["_test_page"]]()

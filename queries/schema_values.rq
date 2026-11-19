@@ -1,0 +1,5 @@
+# Schema / values: up to 13 distinct objects of one predicate (%PRED%) in one graph (%GRAPH%); 12 or fewer means
+#   the field is a small fixed set (an enumeration such as polarity or verdict), which the schema lists in full.
+SELECT DISTINCT ?o
+WHERE { GRAPH <%GRAPH%> { ?s <%PRED%> ?o } }
+LIMIT 13

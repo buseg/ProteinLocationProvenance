@@ -1,0 +1,3 @@
+# Schema / predicates: every predicate used in one named graph (%GRAPH%). Used by scripts/kg_schema.py.
+SELECT DISTINCT ?p
+WHERE { GRAPH <%GRAPH%> { ?s ?p ?o } }

@@ -10,6 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from locx.config import CFG, QUERIES  # noqa: E402
 from locx.kg import fuseki  # noqa: E402
+from locx.kg.ttl import NAMESPACES  # noqa: E402
 
 LOCX = "http://example.org/locx/"
 RUN_ID = CFG["extract"]["main_run"]
@@ -39,6 +40,13 @@ def run(name: str, **params):
 
 def local(iri: str) -> str:
     return iri.rsplit("/", 1)[-1]
+
+
+def curie(iri: str) -> str:
+    """Short form of a term IRI: OBO terms as CL:0000540, others by their last path segment."""
+    if iri.startswith("http://purl.obolibrary.org/obo/"):
+        return local(iri).replace("_", ":", 1)
+    return local(iri.rstrip("/"))
 
 
 def protein_iri(acc: str) -> str:
@@ -147,7 +155,7 @@ def manifest_sizes():
     return [{"graph": g, "triples": str(e["triples"]), "loaded_at": e.get("loaded_at", "")} for g, e in m.items()]
 
 
-# --- v2 demo (Home / Protein / Provenance / Explore / Quality) ----------------------------------------
+# --- v2 demo (Home / Protein / Provenance / Quality) --------------------------------------------------
 def assertions_all():
     return run("demo_assertions_all.rq")
 
@@ -208,3 +216,35 @@ def abstract(pmid):
     if not PMID.match(str(pmid)):
         raise ValueError(f"not a PMID: {pmid!r}")
     return run("demo_abstract.rq", PAPER=f"https://pubmed.ncbi.nlm.nih.gov/{pmid}")
+
+
+# Schema page: look up any IRI. Only plain IRI characters are allowed, so the input cannot break out of <...>.
+IRI_OK = re.compile(r"^https?://[A-Za-z0-9._~:/?#\[\]@!$&'()*+,;=%-]+$")
+PREFIXES = {p + ":": ns for p, ns in NAMESPACES.items()}
+
+
+def expand(name: str) -> str:
+    """'uniprot:P04637' or a full IRI -> full IRI; raises ValueError for anything else."""
+    name = (name or "").strip().strip("<>")
+    for p, ns in PREFIXES.items():
+        if name.startswith(p):
+            name = ns + name[len(p):]
+            break
+    if not IRI_OK.match(name) or ">" in name:
+        raise ValueError(f"not an IRI: {name!r}")
+    return name
+
+
+def compact(iri: str) -> str:
+    for p, ns in PREFIXES.items():
+        if iri.startswith(ns):
+            return p + iri[len(ns):]
+    return iri
+
+
+def iri_out(name: str):
+    return run("demo_iri_out.rq", IRI=expand(name))
+
+
+def iri_in(name: str):
+    return run("demo_iri_in.rq", IRI=expand(name))

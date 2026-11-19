@@ -1,0 +1,5 @@
+# Demo / Schema: everything said about one IRI (%IRI%), in every named graph, with the graph it is stored in.
+SELECT ?g ?p ?o
+WHERE { GRAPH ?g { <%IRI%> ?p ?o } }
+ORDER BY ?g ?p ?o
+LIMIT 200

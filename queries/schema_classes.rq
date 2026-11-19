@@ -1,0 +1,4 @@
+# Schema / classes: the classes typed in one named graph (%GRAPH%).
+PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+SELECT DISTINCT ?class
+WHERE { GRAPH <%GRAPH%> { ?s rdf:type ?class } }
