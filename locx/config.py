@@ -13,6 +13,9 @@ REPORTS = ROOT / "reports"
 QUERIES = ROOT / "queries"
 
 CFG = yaml.safe_load((ROOT / "config.yaml").read_text())
+# the Docker demo (compose.yaml) points the app at its own Fuseki container
+if os.environ.get("LOCX_FUSEKI_BASE"):
+    CFG["fuseki"]["base"] = os.environ["LOCX_FUSEKI_BASE"].rstrip("/")
 
 
 def secret(name: str) -> str:

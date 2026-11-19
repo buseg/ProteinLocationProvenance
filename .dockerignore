@@ -1,0 +1,12 @@
+# Build context = only what the demo images need (never .env, data/ or logs/)
+*
+!config.yaml
+!.streamlit/
+!locx/
+!queries/
+!app/
+!reports/
+!data/rdf/loaded.json
+!docker/demo/
+**/__pycache__
+**/*.pyc

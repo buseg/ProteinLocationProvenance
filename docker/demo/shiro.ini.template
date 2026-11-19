@@ -1,0 +1,15 @@
+# Rendered by fuseki-entrypoint.sh at every start. The admin password is random and never printed,
+# so the admin endpoints (/$/...) stay locked; the dataset itself has no write endpoints.
+[main]
+ssl.enabled = false
+plainMatcher = org.apache.shiro.authc.credential.SimpleCredentialsMatcher
+iniRealm.credentialsMatcher = $plainMatcher
+
+[users]
+admin = @ADMIN_PASSWORD@
+
+[urls]
+/$/ping   = anon
+/$/server = anon
+/$/**     = authcBasic,user[admin]
+/**       = anon

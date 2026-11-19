@@ -3,7 +3,7 @@ SHELL := /bin/bash
 MM    ?= $(HOME)/.local/bin/micromamba
 GPU   := $(shell sed -n 's/^ *gpu: *\([0-9]*\).*/\1/p' config.yaml)
 
-.PHONY: env kg corpus candidates fuseki-build fuseki-up fuseki-down fuseki-status fuseki-smoke fuseki-backup vllm-env serve serve-stop serve-smoke serve2 serve2-stop serve2-smoke extract-dev extract validate rdf load verdicts silver-eval precision-sample precision report demo demo-stop demo-check abstracts
+.PHONY: env kg corpus candidates fuseki-build fuseki-up fuseki-down fuseki-status fuseki-smoke fuseki-backup vllm-env serve serve-stop serve-smoke serve2 serve2-stop serve2-smoke extract-dev extract validate rdf load verdicts silver-eval precision-sample precision report demo demo-stop demo-check demo-export demo-bundle abstracts
 
 ## M0 — pipeline env (micromamba, conda-forge only)
 env:
@@ -66,3 +66,5 @@ report: ; $(PY) -m locx.analysis.report $(ARGS)
 demo:       ; ./scripts/demo.sh start
 demo-stop:  ; ./scripts/demo.sh stop
 demo-check: ; $(PY) app/check_demo.py
+demo-export: ; $(PY) scripts/demo_export.py      # graphs -> data/demo_export (for Docker, docker/demo/README.md)
+demo-bundle: ; ./scripts/demo_bundle.sh           # one tar.gz with code + export for another machine

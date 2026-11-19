@@ -1,0 +1,30 @@
+# locx demo in Docker (docker/demo/README.md): docker compose up --build, then http://localhost:8501
+# Not used on the GPU server (no Docker there); this is for laptops and other machines.
+name: locx-demo
+
+services:
+  fuseki:
+    build: { context: ., dockerfile: docker/demo/Dockerfile.fuseki }
+    environment:
+      JVM_ARGS: ${FUSEKI_JVM_ARGS:--Xmx4g}
+    volumes:
+      - fuseki-db:/fuseki/databases          # TDB2 database, built from the export on the first start
+      - ./data/demo_export:/data:ro          # *.nq.gz + graphs.tsv from scripts/demo_export.py
+    ports:
+      - "127.0.0.1:3030:3030"                # Fuseki's query UI (read-only); local machine only
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:3030/$$/ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30m                      # the first start loads ~16M triples
+
+  demo:
+    build: { context: ., dockerfile: docker/demo/Dockerfile.app }
+    depends_on:
+      fuseki: { condition: service_healthy }
+    ports:
+      - "127.0.0.1:8501:8501"
+
+volumes:
+  fuseki-db:
