@@ -8,6 +8,7 @@ RUN pip install --no-cache-dir -r /tmp/requirements.txt && useradd --system --cr
 COPY config.yaml ./
 COPY .streamlit ./.streamlit
 COPY locx ./locx
+COPY ontology/locx.owl.ttl ./ontology/locx.owl.ttl
 COPY queries ./queries
 COPY app ./app
 COPY reports ./reports

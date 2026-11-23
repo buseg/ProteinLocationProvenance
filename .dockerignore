@@ -3,6 +3,7 @@
 !config.yaml
 !.streamlit/
 !locx/
+!ontology/locx.owl.ttl
 !queries/
 !app/
 !reports/
