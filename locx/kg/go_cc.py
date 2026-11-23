@@ -1,6 +1,6 @@
 """GO cellular component terms from go-basic.obo -> the grounding dictionary (data/interim/go_cc_dictionary.tsv),
 the non-human / too-generic sets and counts. The knowledge graph uses the official GO OWL release of the same version
-(graph go, locx/kg/releases.py); this module no longer writes a GO graph of its own (DECISIONS 2026-11-19).
+(graph go, locx/kg/releases.py); this module no longer writes a GO graph of its own.
 Which terms are too generic or non-human is stated in the locx ontology (section 10) and read from there.
 """
 import json
@@ -12,7 +12,7 @@ import obonet
 from locx import ontology as O
 from locx.config import CFG, INTERIM
 
-# Adjective / short-form map (SPEC M2.4); every ID is verified by its label at build time.
+# Adjective / short-form map; every ID is verified by its label at build time.
 ADJECTIVES = [
     (["nuclear", "nucleus", "nuclei"], "GO:0005634", "nucleus"),
     (["nucleoplasmic"], "GO:0005654", "nucleoplasm"),

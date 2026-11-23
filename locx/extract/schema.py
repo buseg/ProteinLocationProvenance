@@ -1,4 +1,4 @@
-"""Per-abstract JSON schema (SPEC §5.3): enums hold only this abstract's sentence and candidate IDs,
+"""Per-abstract JSON schema: enums hold only this abstract's sentence and candidate IDs,
 so constrained decoding cannot produce an unknown ID. Property order = generation order
 (sentence first: the model commits to evidence before choosing the claim)."""
 

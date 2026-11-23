@@ -4,7 +4,7 @@
 truth**: the RDF builders, SHACL shapes, verdict rules and demo read their classes, properties and values from it
 (`locx/ontology.py`). Edit it in Protégé, keeping `catalog-v001.xml` next to it, then run `make ontology` (loads it
 into graph `urn:locx:graph:ontology`) and `make check-ontology`. If you rename or remove a term the code uses, the
-build stops and names the term. The whole data model is in [`docs/DATA_MODEL.md`](../docs/DATA_MODEL.md).
+build stops and names the term.
 
 | File | What |
 |---|---|

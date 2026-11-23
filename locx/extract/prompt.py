@@ -1,4 +1,4 @@
-"""Prompt for one abstract (SPEC §5.1, §5.2). The model sees gene symbols, GO labels and mention
+"""Prompt for one abstract. The model sees gene symbols, GO labels and mention
 strings only; never UniProt accessions or GO IDs."""
 import hashlib
 

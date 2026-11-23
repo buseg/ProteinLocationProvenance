@@ -1,4 +1,4 @@
-# One target per milestone (SPEC §9). No Docker on this server (docs/DECISIONS.md).
+# One target per pipeline stage. Services run without Docker (Fuseki from the Apache distribution, vLLM from pip).
 SHELL := /bin/bash
 MM    ?= $(HOME)/.local/bin/micromamba
 GPU   := $(shell sed -n 's/^ *gpu: *\([0-9]*\).*/\1/p' config.yaml)
@@ -51,7 +51,7 @@ rdf:  ; $(PY) -m locx.kg.claims_rdf build $(ARGS)
 load: ; $(PY) -m locx.kg.claims_rdf load $(ARGS)
 abstracts: ; $(PY) -m locx.kg.abstracts_rdf build && $(PY) -m locx.kg.abstracts_rdf load   # text for the demo's abstract view
 
-## Ontology (hand-maintained ontology/locx.owl.ttl is the source of truth; DECISIONS 2026-11-19)
+## Ontology (hand-maintained ontology/locx.owl.ttl is the source of truth)
 ontology: ; $(PY) -c "from locx.kg import fuseki; from locx import ontology as O; from locx.config import CFG; fuseki.load(CFG['graphs']['ontology'], O.PATH, replace=True)"   # load it as graph urn:locx:graph:ontology
 reason:   ; $(PY) scripts/reason.py $(ARGS)          # OWL 2 RL inferences -> graph inferred + consistency checks (reports/reasoning.json)
 check-ontology: ; $(PY) scripts/check_ontology.py $(ARGS)   # data vs ontology, outside IDs, HermiT, Protégé sample (reports/ontology.json)

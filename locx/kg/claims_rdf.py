@@ -488,7 +488,7 @@ def build(run_id):
                                                      records=records, works=works),
                                         [ontology, go_module, str(RDF / "uniprot_proteins.ttl")],
                                         SHAPES / "claims.shacl.ttl", REPORTS / "shacl_report.txt",
-                                        "gate shapes (SPEC M7)")
+                                        "gate shapes")
     valid = sum(cl["valid"] for cl in claims)
     per_tier = {}
     for t in meta["tiers"]:

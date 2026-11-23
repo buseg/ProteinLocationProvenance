@@ -1,5 +1,5 @@
 """make check-ontology: check the data against the hand-maintained locx ontology (ontology/locx.owl.ttl), the
-other way round from a generated ontology (DECISIONS 2026-11-19, "ontology first").
+other way round from a generated ontology ("ontology first").
 
 1. Coverage: every class and predicate used in our data graphs is declared in the ontology (the external releases
    go, eco, ro, uniprot-locations are other people's ontologies and are not checked against ours).

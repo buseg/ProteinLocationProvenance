@@ -4,7 +4,7 @@ Columns, left to right, follow the RDF:
   author group box ⟶ paper  ⟵ prov:wasDerivedFrom ⟵  claim (mention)  ⟶ locx:asserts ⟶  assertion  ⟶ locx:goaSame/... ⟶  GOA rows
 and the extraction run (prov:Activity, its agent = the model) sits above the claims, which were prov:wasGeneratedBy it.
 Papers are boxed by independent author group; the box header names the authors that link its papers (shared ORCID or
-name key in >= 2 of them, SPEC M8), which is why several papers can count as one group.
+name key in >= 2 of them), which is why several papers can count as one group.
 All text from papers is escaped; links are built only from validated PMIDs / ORCID IRIs.
 """
 import html

@@ -3,7 +3,7 @@
 # and pre-downloads the model into the HF cache. Idempotent: skips steps already done.
 # vLLM 0.32.0+cu129: the server driver (560) supports CUDA <= 12.6; the default PyPI wheels of
 # vLLM >= 0.33 are CUDA 13 only (needs driver >= 580). CUDA 12.9 builds run via minor-version
-# compatibility. See docs/DECISIONS.md (2026-11-16).
+# compatibility.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 VLLM_VERSION="${VLLM_VERSION:-0.32.0}"

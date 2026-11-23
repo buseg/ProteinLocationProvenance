@@ -1,4 +1,4 @@
-# locx gate shapes (SPEC M7): the final papers + run + assertions graphs must conform before loading.
+# locx gate shapes: the final papers + run + assertions graphs must conform before loading.
 # Validated by locx/kg/claims_rdf.py together with the locx ontology (so value IRIs are typed with their value-set
 # class), the cellular-component part of the official GO release, and the UniProt protein types. Value lists live
 # only in the ontology: shapes check them with sh:class.

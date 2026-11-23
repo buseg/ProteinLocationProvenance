@@ -1,8 +1,8 @@
-"""M6 validation (Python part of the hybrid; DECISIONS 2026-11-16).
+"""Claim validation, Python part (the location checks that need GO run as SHACL shapes).
 
   python -m locx.extract.validate [--run-id ID]      # default: config extract.main_run
 
-Text-based checks per claim (SPEC M6); flags are stored, no claim is dropped:
+Text-based checks per claim; flags are stored, no claim is dropped:
   V1 bad_json                  abstract-level: the model's answer did not parse (no claims)
   V2 protein_not_in_sentence   chosen protein not mentioned in the cited sentence
      protein_coref             ... but mentioned in an earlier sentence (warning only)
@@ -30,7 +30,7 @@ from locx.io import read_jsonl, write_jsonl
 from locx.kg.go_cc import check_label, parse
 
 RUNS = DATA / "runs"
-FUZZY_MIN = 92        # SPEC M6 V4
+FUZZY_MIN = 92        # minimum fuzzy score for grounding a free-text location
 FUZZY_MIN_LEN = 5     # no fuzzy matching for very short texts ("er" vs "ecm")
 # Grounding-only aliases for texts the candidate stoplist keeps out of the dictionary.
 # Every ID is verified by its label against go-basic.obo at start-up.

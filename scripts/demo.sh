@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Streamlit demo (SPEC M11): start | stop | status. Binds 127.0.0.1:8501 only (Buse: SSH tunnel, laptop port 8502).
+# Streamlit demo: start | stop | status. Binds 127.0.0.1:8501 only (reach it through an SSH tunnel).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 MM="${MAMBA_EXE:-$HOME/.local/bin/micromamba}"

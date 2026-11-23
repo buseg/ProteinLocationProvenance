@@ -1,10 +1,10 @@
-"""Independent author groups per assertion (SPEC M8).
+"""Independent author groups per assertion.
 
 Two supporting papers are in the same group if they share an ORCID or at least two author name
 keys (ASCII-folded last name + first initial). Groups are connected components (union-find) over
 the supporting papers of ONE assertion, not over the corpus (common names would chain unrelated
 labs). Every author contributes a name key; authors with an ORCID also contribute the ORCID, so a
-person listed once with and once without an ORCID can still link via names (DECISIONS 2026-11-16).
+person listed once with and once without an ORCID can still link via names.
 Authors without ORCID are not disambiguated: counts are approximate.
 """
 import re

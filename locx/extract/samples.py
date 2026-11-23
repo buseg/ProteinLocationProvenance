@@ -1,4 +1,4 @@
-"""reports/dev_samples.md: 20 random dev abstracts with their extracted claims, for Buse to review.
+"""reports/dev_samples.md: 20 random dev abstracts with their extracted claims, for manual review.
 
   python -m locx.extract.samples [--run-id ID] [--n 20]
 Default run: the newest data/runs/* whose tiers are ["dev"].

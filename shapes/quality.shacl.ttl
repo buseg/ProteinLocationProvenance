@@ -1,4 +1,4 @@
-# locx quality shapes (SPEC M6 V5, V6): run on the provisional run graph together with the locx ontology and the
+# locx quality shapes (impossible and too generic locations): run on the provisional run graph together with the locx ontology and the
 # cellular-component part of the official GO release (locx/kg/claims_rdf.py). Their results become claim flags.
 # Which GO terms are too generic or non-human is stated in the ontology (section 10), not here; GO's part_of is an
 # OWL restriction (rdfs:subClassOf [owl:onProperty part_of ; owl:someValuesFrom X]), so the hierarchy path is

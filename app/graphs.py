@@ -208,7 +208,7 @@ def conditions_page(ctx, slim_toggle):
 
 # --- Network page ------------------------------------------------------------------------------------
 def _paper_groups(papers, authors):
-    """Union-find over papers: same group when they share an ORCID or >= 2 author name keys (SPEC M8 rule)."""
+    """Union-find over papers: same group when they share an ORCID or >= 2 author name keys."""
     parent = {p: p for p in papers}
 
     def find(x):

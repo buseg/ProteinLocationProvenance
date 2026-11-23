@@ -1,10 +1,10 @@
 fuseki:
-  base: http://localhost:3030          # on the server; Buse uses the SSH tunnel
+  base: http://localhost:3030          # on the server; reach it through an SSH tunnel
   dataset: locx
   user: admin
   password_env: FUSEKI_ADMIN_PASSWORD  # read from .env, never stored here
 graphs:
-  go: urn:locx:graph:go                  # official GO release go-basic.owl 2026-07-26, unmodified (DECISIONS 2026-11-19)
+  go: urn:locx:graph:go                  # official GO release go-basic.owl 2026-07-26, unmodified
   eco: urn:locx:graph:eco                # official ECO release 2026-07-10, unmodified
   ro: urn:locx:graph:ro                  # official RO release 2026-09-04, unmodified
   uniprot_locations: urn:locx:graph:uniprot-locations   # UniProt's subcellular location vocabulary, as published
@@ -14,7 +14,7 @@ graphs:
   papers: urn:locx:graph:papers
   assertions: urn:locx:graph:assertions
   verdicts: urn:locx:graph:verdicts
-  abstracts: urn:locx:graph:abstracts   # text the LLM read (PubTator title + abstract), for the demo (DECISIONS 2026-11-17)
+  abstracts: urn:locx:graph:abstracts   # text the LLM read (PubTator title + abstract), for the demo
   ontology: urn:locx:graph:ontology     # the locx OWL ontology, ontology/locx.owl.ttl (hand-maintained source of truth)
   support: urn:locx:graph:support       # derived: author groups and support counts per assertion (own activity)
   inferred: urn:locx:graph:inferred     # derived: OWL 2 RL inferences over ontology + data (make reason)
@@ -22,9 +22,9 @@ graphs:
 llm:
   model: google/gemma-4-31B-it-qat-w4a16-ct
   served_name: gemma4-31b
-  gpu: 1                                     # the one GPU this project uses (DECISIONS 2026-11-16)
+  gpu: 1                                     # GPU of the main vLLM server
   endpoint: http://localhost:8000/v1
-  second_gpu: 2                              # second server (port 8001), allowed by Buse 2026-11-16; never GPU 0
+  second_gpu: 2                              # GPU of the second vLLM server (port 8001)
   endpoints: [http://localhost:8000/v1, http://localhost:8001/v1]   # extraction spreads requests over both
   concurrency: 48
   temperature: 0.0
@@ -37,11 +37,11 @@ corpus:
   discovery_protein_filter: false   # expansion 3: V1 query without ABSTRACT:(protein*)
   discovery_cap_expanded: 10000
   discovery_max_screen_per_year: 14000
-  discovery_stratify: year # cap split evenly over discovery_years (DECISIONS 2026-11-16)
+  discovery_stratify: year # cap split evenly over discovery_years
   silver_sample: 19661     # expansion 3 active: full silver pool (expansion 2: 10000, expansion 1: 5000, MVP: 1000)
   silver_sample_expanded: 5000
   seed: 13
-  dev_seeds:               # symbol: names used in the Europe PMC query (SPEC M3.1)
+  dev_seeds:               # symbol: names used in the Europe PMC query
     TP53: ["p53", "TP53"]
     TFEB: ["TFEB"]
     YAP1: ["YAP", "YAP1"]

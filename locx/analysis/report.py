@@ -138,7 +138,7 @@ def figures(verdicts, claims, stats_rows, silver):
     return files
 
 
-# --- next steps (SPEC §12, updated with what the expansion-3 run showed) ------------------------------
+# --- next steps (not built; updated with what the full run showed) ------------------------------
 NEXT_STEPS = [
     "**Full-text articles** (open-access PMC / Europe PMC, BioC): GOA curators read full texts, so abstracts cap silver "
     "recall (ceiling in §6); section-aware chunking (results, figure legends) and longer contexts.",
@@ -321,7 +321,7 @@ def main():
            f"vocabulary): {gu['proteins']:,} proteins, {gu['proteins_with_location_annotation']:,} with a subcellular location "
            f"annotation. Official releases loaded unmodified: {', '.join(f'`{v}`' for v in rel.values() if v)}. "
            f"GOA evidence as ECO terms, relations as RO terms; {ga.get('context_parts', 0):,} GOA context parts "
-           f"(relation + term) parsed. GO CC dictionary: {gc['dictionary_texts']:,} surface texts. Data model: `docs/DATA_MODEL.md`.", ""]
+           f"(relation + term) parsed. GO CC dictionary: {gc['dictionary_texts']:,} surface texts.", ""]
     if (REPORTS / "kg_schema.json").exists():      # make schema (scripts/kg_schema.py, kg_schema_fig.py)
         sch = json.loads((REPORTS / "kg_schema.json").read_text())
         home, extra = {}, defaultdict(list)

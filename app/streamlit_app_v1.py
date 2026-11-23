@@ -1,6 +1,6 @@
-"""locx demo (SPEC M11): live SPARQL against Fuseki. Every panel shows the exact query it ran.
+"""locx demo (first version): live SPARQL against Fuseki. Every panel shows the exact query it ran.
 
-  make demo        # 127.0.0.1:8501 (Buse: SSH tunnel, laptop port 8502)
+  make demo        # 127.0.0.1:8501 (reach it through an SSH tunnel)
 """
 import html
 import re

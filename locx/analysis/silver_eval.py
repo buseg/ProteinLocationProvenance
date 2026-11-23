@@ -1,4 +1,4 @@
-"""M9.1 silver recall (SPEC M9).
+"""Silver recall: LLM claims against the GOA pairs of GOA-cited abstracts.
 
   python -m locx.analysis.silver_eval [--run-id ID]
 

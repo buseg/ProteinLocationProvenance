@@ -1,4 +1,4 @@
-"""The locx ontology as the code sees it. ontology/locx.owl.ttl is the source of truth (DECISIONS 2026-11-19): the
+"""The locx ontology as the code sees it. ontology/locx.owl.ttl is the source of truth: the
 code takes its vocabulary from there and stops when a term it needs is missing, so a change made in Protégé either
 flows through or fails loudly.
 

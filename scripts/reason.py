@@ -1,4 +1,4 @@
-"""make reason: OWL 2 RL reasoning over the locx ontology + our data graphs (DECISIONS 2026-11-19).
+"""make reason: OWL 2 RL reasoning over the locx ontology + our data graphs.
 
 The OWL 2 RL rules the ontology relies on run as SPARQL updates inside Fuseki (queries/reason_rules.ru), once per
 data graph, writing every inferred triple to urn:locx:graph:inferred (asserted facts are never changed):

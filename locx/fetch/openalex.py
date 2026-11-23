@@ -1,5 +1,5 @@
 """OpenAlex: disambiguated authors (OpenAlex author ID, ORCID when known) and their institutions (ROR IDs) for the
-corpus papers, by PMID. Used instead of our own name keys to identify people (DECISIONS 2026-11-19).
+corpus papers, by PMID. Used instead of our own name keys to identify people.
 
 One request per 100 PMIDs (`filter=pmid:a|b|...`, only the id/ids/authorships fields), cached as JSON under
 data/raw/openalex/ and never fetched twice. No contact details are sent.

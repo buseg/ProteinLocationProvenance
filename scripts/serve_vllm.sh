@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # vLLM without Docker: start | stop | smoke. Env "vllm" (scripts/setup_vllm_env.sh), one GPU per server.
-# Second server: GPU=2 PORT=8001 scripts/serve_vllm.sh start (DECISIONS 2026-11-16).
+# Second server: GPU=2 PORT=8001 scripts/serve_vllm.sh start.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 MM="${MAMBA_EXE:-$HOME/.local/bin/micromamba}"

@@ -3,7 +3,7 @@
   python -m locx.extract.check --run-id ID [--run-id ID2 ...]
 
 Per run, over the last record per PMID:
-- grounding: chosen protein / location is mentioned in the cited sentence (SPEC M6 V2/V3)
+- grounding: chosen protein / location is mentioned in the cited sentence
 - rule-4 proxy: "absent" claims whose sentence has a reduction cue (reduced, impaired, prevented...)
   but no explicit negative cue (not, absent, excluded...)
 - method / organism: share of finding claims with not_stated, and how often the abstract names a
